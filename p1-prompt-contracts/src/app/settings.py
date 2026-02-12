@@ -9,8 +9,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    llm_base_url: str = ""  # например https://models.github.ai/inference/v1 для GitHub Models
-    llm_model: str = "gpt-4o-mini"
+    llm_base_url: str = "https://models.github.ai/inference/v1"
+    llm_model: str = "openai/gpt-4.1-nano"
     llm_max_tokens: int = 1024
     llm_timeout: int = 60
     llm_max_retries: int = 2

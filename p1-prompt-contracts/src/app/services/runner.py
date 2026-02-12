@@ -59,10 +59,15 @@ def run(
     """
     call_llm = _call_llm if _call_llm is not None else llm_client.call_llm
 
+    # --- Prompt Registry ---
+    logger.info("[Registry] lookup prompt_name=%s version=%s", prompt_name, version)
     spec = get_prompt_by_name_version(prompt_name, version)
     if not spec:
+        logger.warning("[Registry] prompt not found prompt_name=%s version=%s", prompt_name, version)
         return {"ok": False, "error": "unknown prompt", "diagnostics": f"{prompt_name} {version}"}
+    logger.info("[Registry] found spec key=%s template=%s", spec.key, spec.template_path.name)
 
+    # --- Context Builder ---
     schema_class = spec.output_schema
     output_contract = get_schema_description(schema_class)
     context = RenderContext(
@@ -76,39 +81,51 @@ def run(
         {"role": "system", "content": system_message},
         {"role": "user", "content": user_message},
     ]
+    logger.info(
+        "[ContextBuilder] render done system_len=%d user_len=%d",
+        len(system_message), len(user_message),
+    )
 
+    # --- LLM Client ---
     start = time.perf_counter()
+    logger.info("[LLM] calling model=%s", _settings.llm_model)
     raw_response = call_llm(messages)
     elapsed = time.perf_counter() - start
+    logger.info("[LLM] response received elapsed_sec=%.2f response_len=%d", elapsed, len(raw_response))
 
+    # --- Schema Validator ---
     parsed = _extract_json_from_text(raw_response)
+    logger.info("[Validator] parse attempt extracted_len=%d", len(parsed))
     model, err = _parse_and_validate(parsed, schema_class)
     if model is not None:
-        logger.info(
-            "runner ok prompt=%s version=%s elapsed_sec=%.2f model=%s repair=false",
-            prompt_name, version, elapsed, _settings.llm_model,
-        )
+        logger.info("[Validator] ok strict JSON")
+        logger.info("[Strict JSON] success prompt=%s version=%s elapsed_sec=%.2f repair=false", prompt_name, version, elapsed)
         return {"ok": True, "data": model.model_dump()}
 
-    # repair: один повторный вызов с коротким системным промптом
+    logger.warning("[Validator] failed %s", err)
+
+    # --- Repair (если нужно) ---
+    logger.info("[Repair] triggering repair pass")
     repair_messages = [
         {"role": "system", "content": REPAIR_SYSTEM + "\n\nСхема:\n" + output_contract[:1500]},
         {"role": "user", "content": "Исправь в валидный JSON:\n" + raw_response[:4000]},
     ]
     raw_repair = call_llm(repair_messages)
     elapsed_total = time.perf_counter() - start
+    logger.info("[LLM] repair response received elapsed_total_sec=%.2f repair_len=%d", elapsed_total, len(raw_repair))
+
     parsed_repair = _extract_json_from_text(raw_repair)
+    logger.info("[Validator] repair parse attempt extracted_len=%d", len(parsed_repair))
     model_repair, err_repair = _parse_and_validate(parsed_repair, schema_class)
     if model_repair is not None:
-        logger.info(
-            "runner ok after repair prompt=%s version=%s elapsed_sec=%.2f model=%s repair=true",
-            prompt_name, version, elapsed_total, _settings.llm_model,
-        )
+        logger.info("[Validator] ok after repair strict JSON")
+        logger.info("[Strict JSON] success after repair prompt=%s version=%s elapsed_sec=%.2f repair=true", prompt_name, version, elapsed_total)
         return {"ok": True, "data": model_repair.model_dump()}
 
+    logger.warning("[Validator] repair failed %s", err_repair)
     diagnostics = f"first: {err}; repair: {err_repair}"
     logger.warning(
-        "runner validation failed prompt=%s version=%s elapsed_sec=%.2f model=%s repair=true parse_error=%s",
-        prompt_name, version, elapsed_total, _settings.llm_model, diagnostics,
+        "[Strict JSON] validation failed prompt=%s version=%s elapsed_sec=%.2f repair=true diagnostics=%s",
+        prompt_name, version, elapsed_total, diagnostics,
     )
     return {"ok": False, "error": "validation failed", "diagnostics": diagnostics}
