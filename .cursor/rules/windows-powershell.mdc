@@ -1,0 +1,10 @@
+---
+description: Project runs on native Windows; use PowerShell only, never Linux/bash commands
+alwaysApply: true
+---
+
+# Windows Environment
+
+- This project runs on **native Windows only**.
+- **Never** use Linux commands or bash syntax (e.g. `#!/bin/bash`, `chmod`, `ls`, `rm -rf`).
+- **Always** assume PowerShell environment for terminal commands.

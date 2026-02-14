@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from app.llm import client as llm_client
+from app.llm.tokenizer import count_tokens
 from app.prompts.registry import get_prompt_by_name_version
 from app.prompts.render import RenderContext, get_schema_description, render
 from app.settings import Settings
@@ -85,6 +86,11 @@ def run(
         "[ContextBuilder] render done system_len=%d user_len=%d",
         len(system_message), len(user_message),
     )
+
+    # --- Token count (до вызова) ---
+    prompt_tokens = count_tokens(messages, _settings.llm_model)
+    if prompt_tokens > 0:
+        logger.info("[Tokenizer] prompt_tokens=%d model=%s", prompt_tokens, _settings.llm_model)
 
     # --- LLM Client ---
     start = time.perf_counter()
