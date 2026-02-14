@@ -3,7 +3,7 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Корень проекта (p1-prompt-contracts): src/app/settings.py -> .. -> .. -> ..
+# Корень проекта: src/app/settings.py -> parent.parent.parent
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _ENV_FILE = _PROJECT_ROOT / ".env"
 

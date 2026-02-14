@@ -47,7 +47,8 @@ coverage.xml
 *.swp
 *.swo
 *~
-.cursor/plans
+.cursor/
+DESCRIPTION.md
 
 # ——— ОС ———
 .DS_Store
