@@ -1,43 +1,97 @@
-"""Рендеринг шаблона и сбор контекста для LLM."""
+"""
+Рендеринг шаблона и сбор контекста для LLM.
+
+Формирует краткое описание выходной схемы (пример полей и типов) для вставки в промпт,
+чтобы модель возвращала данные в нужном формате, а не полную JSON Schema.
+"""
 import json
+import logging
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.prompts.registry import PromptSpec, TEMPLATES_DIR
 
+logger = logging.getLogger(__name__)
+
 
 def get_schema_description(schema_class: type) -> str:
     """
-    Краткое описание формата ответа в виде примера данных (не полная JSON Schema),
-    чтобы модель возвращала данные, а не схему со служебными полями.
+    Построить краткое описание формата ответа по Pydantic-схеме.
+
+    Используется пример полей и типов (не полная JSON Schema), чтобы LLM
+    возвращала данные, а не схему со служебными полями ($defs, properties и т.д.).
+
+    Returns:
+        Строка вида «Только этот JSON, без других полей: { "field": ..., ... }».
     """
-    s = schema_class.model_json_schema()
-    props = s.get("properties") or {}
-    required = set(s.get("required") or [])
+    raw = schema_class.model_json_schema()
+    props = raw.get("properties") or {}
+    required = raw.get("required") or []
+
+    # Порядок: сначала обязательные поля, затем остальные
+    ordered_names = list(dict.fromkeys([*required, *props.keys()]))
     parts = []
-    for name in required or props.keys():
+    for name in ordered_names:
         if name not in props:
             continue
-        p = props[name]
-        ptype = p.get("type", "string")
-        if ptype == "array":
-            items = p.get("items", {})
-            ref = items.get("$ref", "")
-            if "Entity" in str(ref):
-                parts.append(f'"{name}": [{{"type": "<string>", "value": "<string>"}}, ...]')
-            else:
-                parts.append(f'"{name}": [...]')
-        elif ptype == "number" or (ptype == "integer" and "confidence" in name):
-            parts.append(f'"{name}": <float 0-1>')
-        elif "enum" in p or "const" in p:
-            enum_vals = p.get("enum", [p.get("const")] if "const" in p else [])
-            parts.append(f'"{name}": "{enum_vals[0]}" (one of: {", ".join(str(x) for x in enum_vals)})')
-        else:
-            max_len = p.get("maxLength", "")
-            suffix = f", max {max_len} chars" if max_len else ""
-            parts.append(f'"{name}": "<string>{suffix}"')
-    return "Только этот JSON, без других полей:\n{" + ", ".join(parts) + "}"
+        part = _describe_property(name, props[name])
+        if part:
+            parts.append(part)
+
+    result = "Только этот JSON, без других полей:\n{" + ", ".join(parts) + "}"
+    logger.debug("schema_description schema=%s fields=%d", schema_class.__name__, len(parts))
+    return result
+
+
+def _describe_property(name: str, prop: dict[str, Any]) -> str:
+    """
+    Описать одно поле схемы для промпта: тип и ограничения.
+
+    Поддерживаются: array (в т.ч. Entity), number (0–1), enum/const, string (с maxLength).
+    """
+    ptype = prop.get("type", "string")
+
+    if ptype == "array":
+        return _describe_array_field(name, prop.get("items") or {})
+    if ptype == "number" or (ptype == "integer" and "confidence" in name):
+        return _describe_number_field(name, prop)
+    if "enum" in prop or "const" in prop:
+        return _describe_enum_field(name, prop)
+    return _describe_string_field(name, prop)
+
+
+def _describe_array_field(name: str, items_schema: dict[str, Any]) -> str:
+    """
+    Описание поля-массива. Для ссылки на Entity — явный пример структуры элемента.
+    """
+    ref = items_schema.get("$ref", "")
+    if "Entity" in str(ref):
+        return f'"{name}": [{{"type": "<string>", "value": "<string>"}}, ...]'
+    return f'"{name}": [...]'
+
+
+def _describe_number_field(name: str, prop: dict[str, Any]) -> str:
+    """Числовое поле (в т.ч. confidence 0–1)."""
+    return f'"{name}": <float 0-1>'
+
+
+def _describe_enum_field(name: str, prop: dict[str, Any]) -> str:
+    """Поле с перечислением допустимых значений (enum/const)."""
+    enum_vals = prop.get("enum")
+    if enum_vals is None and "const" in prop:
+        enum_vals = [prop["const"]]
+    enum_vals = enum_vals or []
+    first = enum_vals[0] if enum_vals else ""
+    options = ", ".join(str(x) for x in enum_vals)
+    return f'"{name}": "{first}" (one of: {options})'
+
+
+def _describe_string_field(name: str, prop: dict[str, Any]) -> str:
+    """Строковое поле, опционально с maxLength."""
+    max_len = prop.get("maxLength")
+    suffix = f", max {max_len} chars" if max_len else ""
+    return f'"{name}": "<string>{suffix}"'
 
 
 class RenderContext:
@@ -62,6 +116,7 @@ def render(spec: PromptSpec, context: RenderContext) -> tuple[str, str]:
     """
     if not context.output_contract and spec.output_schema:
         context.output_contract = get_schema_description(spec.output_schema)
+        logger.debug("render output_contract built from schema %s", spec.output_schema.__name__)
 
     env = Environment(
         loader=FileSystemLoader(TEMPLATES_DIR),
