@@ -39,6 +39,19 @@ uvicorn app.main:app --reload --app-dir src
 
 ### Промпты (классификация / извлечение)
 
+```mermaid
+flowchart LR
+  API["POST /run/{name}"]
+  Registry["Prompt Registry"]
+  Context["Context Builder"]
+  LLM["LLM Client"]
+  Validator["Schema Validator"]
+  Repair["Repair if needed"]
+  JSON["Strict JSON"]
+  API --> Registry --> Context --> LLM --> Validator --> Repair --> JSON
+```
+
+
 - `GET /prompts` — список промптов и версий
 - `POST /run/{prompt_name}` — выполнить промпт (body: `version`, `task`, `input`, `constraints`)
 
@@ -49,6 +62,28 @@ curl -X POST http://127.0.0.1:8000/run/classify -H "Content-Type: application/js
 ```
 
 ### RAG (база знаний)
+
+```mermaid
+flowchart LR
+  subgraph ingest [Ingestion]
+    Load[loader]
+    Chunk[chunker]
+    Embed[embedding]
+    Store[FAISS store]
+    Load --> Chunk --> Embed --> Store
+  end
+  subgraph api [API]
+    IngestEP["POST /rag/ingest"]
+    SearchEP["GET /rag/search"]
+    AskEP["POST /rag/ask"]
+  end
+  IngestEP --> ingest
+  SearchEP --> Retrieve[retrieve top-k]
+  AskEP --> Retrieve
+  Store --> Retrieve
+  Retrieve --> Gen[Generation + citations]
+  Gen --> AskEP
+```
 
 - `POST /rag/ingest` — индексация документов из `data/knowledge_base.json` в FAISS (ответ: `docs_indexed`, `chunks_indexed`, `duration_ms`)
 - `GET /rag/search?q=...&k=5` — поиск чанков по запросу

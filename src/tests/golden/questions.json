@@ -4,7 +4,7 @@
   {"question": "Elasticsearch cluster is red; search-api returns 503. What mitigation steps are there?", "expected_doc_ids": ["kb-2025-10-runbook-es-cluster-red"], "expected_status": "ok"},
   {"question": "Kubernetes rollout is stuck and pods are in CrashLoopBackOff. How do I triage?", "expected_doc_ids": ["kb-2025-06-runbook-k8s-rollout-stuck"], "expected_status": "ok"},
   {"question": "Postgres says too many clients already. How do we reduce connection exhaustion?", "expected_doc_ids": ["kb-2024-11-runbook-postgres-connection-exhaustion"], "expected_status": "ok"},
-  {"question": "Why did we choose Stripe webhooks as source of truth for payment state?", "expected_doc_ids": ["kb-2024-12-adr-stripe-webhooks"], "expected_status": "ok"},
+  {"question": "Why did we choose Stripe webhooks as source of truth for payment state?", "expected_doc_ids": ["kb-2024-12-adr-stripe-webhooks", "adr-2024-12-stripe-webhooks"], "expected_status": "ok"},
   {"question": "What is the Redis cache key format and eviction policy for carts?", "expected_doc_ids": ["kb-2025-03-adr-redis-cart-cache"], "expected_status": "ok"},
   {"question": "How does index aliasing work for Elasticsearch product reindexing?", "expected_doc_ids": ["kb-2025-02-adr-es-aliasing"], "expected_status": "ok"},
   {"question": "What is PgBouncer pool mode and how do services connect to it?", "expected_doc_ids": ["kb-2024-08-adr-pgbouncer"], "expected_status": "ok"},

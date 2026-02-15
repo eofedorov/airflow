@@ -18,8 +18,8 @@ def _get_embedding_model():
 def run_ingestion(
     kb_path: Path | str | None = None,
     index_dir: Path | str | None = None,
-    chunk_size: int = 512,
-    overlap: int = 64,
+    chunk_size: int = 256,
+    overlap: int = 32,
 ) -> dict[str, int | float]:
     """
     Load knowledge base -> chunk -> embed -> save to FAISS.
