@@ -31,3 +31,8 @@ class Settings(BaseSettings):
     rag_relevance_threshold: float = 0.3
     # RAG: путь к базе знаний (пусто = project_root/data)
     rag_kb_path: str = ""
+    # Phase 3: Postgres + Qdrant + MCP
+    database_url: str = ""
+    qdrant_url: str = ""
+    qdrant_collection: str = "kb_chunks_v1"
+    mcp_server_url: str = ""

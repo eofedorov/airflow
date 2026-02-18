@@ -1,6 +1,6 @@
 """
-Golden set: один ingest из data/, затем все вопросы из golden/questions*.json.
-Для каждого ok-вопроса retrieval должен вернуть чанк из ожидаемого doc;
+Golden set: один ingest из data/ (Postgres + Qdrant), затем вопросы из golden/questions*.json.
+Для каждого ok-вопроса retrieval должен вернуть чанк из expected_doc_ids;
 для каждого insufficient_context — при пустом retrieval ask возвращает insufficient_context.
 """
 import json
@@ -11,7 +11,8 @@ import pytest
 from app.rag.ask_service import ask
 from app.rag.ingest.indexer import run_ingestion
 from app.rag.retrieve import retrieve
-from app.rag.store.faiss_store import FaissStore
+from app.rag.store.qdrant_store import QdrantStore
+from app.settings import Settings
 
 _TEST_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _TEST_DIR.parent.parent
@@ -28,17 +29,25 @@ def _load_questions(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-@pytest.fixture(scope="module")
-def index_dir(tmp_path_factory):
-    """Один раз индексируем data/ (обе базы) во временный индекс."""
-    dir_ = tmp_path_factory.mktemp("faiss_golden")
-    run_ingestion(kb_path=DATA_DIR, index_dir=dir_)
-    return dir_
+def _needs_postgres_qdrant():
+    """Пропустить тесты, требующие Postgres и Qdrant, если не настроены."""
+    s = Settings()
+    if not s.database_url or not s.qdrant_url:
+        pytest.skip("database_url and qdrant_url required for golden retrieve (Postgres + Qdrant)")
 
 
 @pytest.fixture(scope="module")
-def store(index_dir):
-    return FaissStore(index_dir=index_dir)
+def store():
+    """Один раз индексируем data/ в Postgres + Qdrant, возвращаем QdrantStore для retrieve."""
+    _needs_postgres_qdrant()
+    try:
+        run_ingestion(kb_path=DATA_DIR)
+    except Exception as e:
+        err = str(e).lower()
+        if "connect" in err or "10061" in err or "connection" in err or "refused" in err:
+            pytest.skip("Postgres or Qdrant not available (connection refused)")
+        raise
+    return QdrantStore()
 
 
 def test_golden_retrieve_ok_questions(store):

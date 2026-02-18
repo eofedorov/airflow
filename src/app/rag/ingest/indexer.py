@@ -1,14 +1,26 @@
-"""Запуск индексации: загрузка документов -> чанкинг -> эмбеддинги (sentence-transformers) -> сохранение в FAISS."""
+"""Индексация: загрузка документов -> проверка sha256 (идемпотентность) -> Postgres -> чанкинг -> эмбеддинги -> Qdrant."""
+import hashlib
 import time
 from pathlib import Path
 
+from app.db.connection import get_pool
+from app.db.queries import (
+    delete_chunks_by_doc_id,
+    get_document_by_doc_key,
+    insert_chunk,
+    insert_document,
+    update_document_sha256,
+)
 from app.rag.ingest.chunker import chunk_document
 from app.rag.ingest.loader import load_documents
-from app.rag.store.faiss_store import FaissStore, metadata_from_chunk
-from app.rag.store.models import ChunkMeta
+from app.rag.store.qdrant_store import QdrantStore
 from app.settings import Settings
 
 _settings = Settings()
+
+
+def _sha256_content(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 def _get_embedding_model():
@@ -23,7 +35,8 @@ def run_ingestion(
     overlap: int | None = None,
 ) -> dict[str, int | float]:
     """
-    Загрузить базу знаний -> чанкинг -> эмбеддинги -> сохранить в FAISS.
+    Загрузить базу знаний -> по sha256 пропустить неизменённые -> Postgres (documents + chunks)
+    -> эмбеддинги -> upsert в Qdrant. При обновлении документа старые точки в Qdrant удаляются.
     Возвращает { docs_indexed, chunks_indexed, duration_ms }.
     """
     start = time.perf_counter()
@@ -33,26 +46,76 @@ def run_ingestion(
     if not docs:
         return {"docs_indexed": 0, "chunks_indexed": 0, "duration_ms": 0.0}
 
-    all_chunks: list[ChunkMeta] = []
-    for doc in docs:
-        all_chunks.extend(
-            chunk_document(doc, chunk_size=cs, overlap=ov)
-        )
-
-    if not all_chunks:
-        return {"docs_indexed": len(docs), "chunks_indexed": 0, "duration_ms": 0.0}
-
+    store = QdrantStore()
+    store.ensure_collection()
     model = _get_embedding_model()
-    texts = [c.text for c in all_chunks]
-    vectors = model.encode(texts, show_progress_bar=False).tolist()
+    docs_indexed = 0
+    chunks_indexed = 0
+    pool = get_pool()
 
-    store = FaissStore(index_dir=index_dir)
-    metadata = [metadata_from_chunk(c) for c in all_chunks]
-    store.save(vectors, metadata)
+    with pool.connection() as conn:
+        for doc in docs:
+            doc_key = doc.get("path") or doc.get("doc_id") or ""
+            content = doc.get("content") or ""
+            if not doc_key:
+                continue
+            new_sha = _sha256_content(content)
+            existing = get_document_by_doc_key(conn, doc_key)
+            if existing is not None:
+                doc_id, existing_sha = existing
+                if existing_sha == new_sha:
+                    continue
+                update_document_sha256(conn, doc_id, new_sha)
+                delete_chunks_by_doc_id(conn, doc_id)
+                store.delete_by_doc_id(str(doc_id))
+            else:
+                doc_id = insert_document(
+                    conn,
+                    doc_key=doc_key,
+                    title=doc.get("title") or "",
+                    doc_type=doc.get("document_type") or "general",
+                    project="core",
+                    language="ru",
+                    sha256=new_sha,
+                    source="local_fs",
+                )
+            docs_indexed += 1
+            chunks = chunk_document(doc, chunk_size=cs, overlap=ov)
+            if not chunks:
+                continue
+            texts = [c.text for c in chunks]
+            vectors = model.encode(texts, show_progress_bar=False).tolist()
+            title = doc.get("title") or ""
+            doc_type = doc.get("document_type") or "general"
+            points: list[tuple[str, list[float], dict]] = []
+            for chunk, vec in zip(chunks, vectors):
+                chunk_id_uuid = insert_chunk(
+                    conn,
+                    doc_id=doc_id,
+                    chunk_index=chunk.chunk_index,
+                    section=chunk.section or None,
+                    text=chunk.text,
+                    embedding_ref=None,
+                )
+                payload = {
+                    "doc_id": str(doc_id),
+                    "doc_key": doc_key,
+                    "title": title,
+                    "doc_type": doc_type,
+                    "project": "core",
+                    "language": "ru",
+                    "chunk_id": str(chunk_id_uuid),
+                    "chunk_index": chunk.chunk_index,
+                    "section": chunk.section or "",
+                    "text": chunk.text,
+                }
+                points.append((str(chunk_id_uuid), vec, payload))
+            store.upsert(points)
+            chunks_indexed += len(points)
 
     elapsed_ms = (time.perf_counter() - start) * 1000
     return {
-        "docs_indexed": len(docs),
-        "chunks_indexed": len(all_chunks),
+        "docs_indexed": docs_indexed,
+        "chunks_indexed": chunks_indexed,
         "duration_ms": round(elapsed_ms, 2),
     }

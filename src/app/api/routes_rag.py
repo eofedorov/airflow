@@ -6,11 +6,11 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from app.contracts.rag_schemas import AnswerContract
-from app.rag.ask_service import ask
 from app.rag.formats import truncate_preview
 from app.rag.ingest.indexer import run_ingestion
 from app.rag.ingest.loader import DEFAULT_KB_PATH
 from app.rag.retrieve import retrieve
+from app.services.rag_agent import ask
 from app.settings import Settings
 
 router = APIRouter()
@@ -79,14 +79,9 @@ def get_search(
 
 @router.post("/ask", response_model=AnswerContract)
 def post_ask(body: AskRequestBody, debug: bool = Query(default=False)):
-    """Ответ на вопрос по базе знаний с цитатами. Возвращает AnswerContract."""
-    logger.info("[RAG] POST /ask question_len=%d k=%d", len(body.question), body.k)
-    contract = ask(
-        question=body.question,
-        k=body.k,
-        filters=body.filters,
-        strict_mode=body.strict_mode,
-    )
+    """Ответ на вопрос по базе знаний через agent (MCP tools + LLM). Возвращает AnswerContract."""
+    logger.info("[RAG] POST /ask question_len=%d", len(body.question))
+    contract = ask(question=body.question)
     if debug:
         pass  # chunks_used/doc_ids уже логируются в ask_service
     return contract

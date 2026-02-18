@@ -1,0 +1,8 @@
+# Промежуточный образ: базовый образ + зависимости.
+# Сборка: docker build -t llm-gate-mcp-deps -f Dockerfile.mcp.deps .
+# Пересобирать только при изменении pyproject.toml.
+FROM python:slim
+WORKDIR /app
+RUN mkdir -p src/app && touch src/app/__init__.py
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir -e .

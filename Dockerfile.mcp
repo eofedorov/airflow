@@ -1,0 +1,7 @@
+#   docker build -t llm-gate-mcp-deps -f Dockerfile.mcp.deps .
+#   docker build -t llm-gate-mcp -f Dockerfile.mcp .
+FROM llm-gate-mcp-deps
+COPY src ./src
+ENV PYTHONPATH=/app/src
+EXPOSE 8001
+CMD ["python", "-m", "app.mcp.server.main"]

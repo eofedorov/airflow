@@ -6,8 +6,60 @@ AI-шлюз для инженерных задач: классификация/�
 
 - Python 3.10+
 - FastAPI, Pydantic, Jinja2, OpenAI API
-- RAG: FAISS, sentence-transformers
+- RAG: FAISS (v2, legacy), Qdrant (v3), sentence-transformers
+- Инфраструктура: Docker Compose (Postgres 16, Qdrant)
 - Сборка: hatchling
+
+## Инфраструктура (v3)
+
+Postgres и Qdrant поднимаются через Docker Compose:
+
+```powershell
+docker compose up -d
+```
+
+Это запускает:
+
+- **Postgres 16** — порт 5432, БД `llm_gate`, схема `llm`
+- **Qdrant** — порт 6333 (REST), 6334 (gRPC), коллекция `kb_chunks_v1`
+
+При первом запуске (чистый volume) init-скрипты из `data/init_db/` автоматически создают роли, таблицы и начальные данные. При повторном запуске (volume уже есть) init пропускается.
+
+### Postgres: схема `llm`
+
+| Таблица | Назначение |
+|---|---|
+| `kb_documents` | Реестр документов базы знаний (doc_key, title, doc_type, project, sha256) |
+| `kb_chunks` | Чанки документов (текст, section, embedding_ref) |
+| `runs` | Запуски обработки запросов (телеметрия, токены, стоимость) |
+| `run_retrievals` | Аудит retrieval: какие чанки использованы в запросе |
+| `tool_calls` | Аудит tool-calls MCP (args, duration_ms, status) |
+| `sql_allowlist` | Allowlist таблиц для инструмента `sql_read` |
+
+Пользователи:
+
+| Роль | Права | Пароль (dev) |
+|---|---|---|
+| `llm_gate_admin` | owner схемы `llm` | `CHANGE_ME_admin_password` |
+| `llm_gate_service` | CRUD на все таблицы | `CHANGE_ME_service_password` |
+| `llm_gate_readonly` | только SELECT | `CHANGE_ME_readonly_password` |
+
+### Qdrant: коллекция `kb_chunks_v1`
+
+- Размерность: 384 (модель `intfloat/multilingual-e5-small`)
+- Метрика: Cosine
+- Payload: `doc_id`, `doc_key`, `title`, `doc_type`, `project`, `language`, `chunk_id`, `chunk_index`, `section`, `text`
+
+### Пересоздание с нуля
+
+Если нужно сбросить данные и переинициализировать:
+
+```powershell
+docker compose down -v
+docker compose up -d
+```
+
+Коллекция Qdrant создаётся отдельно (не через init-скрипты Postgres) — при пересоздании нужно создать её вручную или через ingestion pipeline.
 
 ## Установка
 
@@ -32,8 +84,8 @@ $env:PYTHONPATH = "src"
 uvicorn app.main:app --reload --app-dir src
 ```
 
-- API: http://127.0.0.1:8000  
-- Документация: http://127.0.0.1:8000/docs  
+- API: http://127.0.0.1:8000
+- Документация: http://127.0.0.1:8000/docs
 
 ## Эндпоинты
 
@@ -50,7 +102,6 @@ flowchart LR
   JSON["Strict JSON"]
   API --> Registry --> Context --> LLM --> Validator --> Repair --> JSON
 ```
-
 
 - `GET /prompts` — список промптов и версий
 - `POST /run/{prompt_name}` — выполнить промпт (body: `version`, `task`, `input`, `constraints`)
@@ -93,7 +144,25 @@ flowchart LR
 
 ## Конфигурация
 
-Переменные окружения (или `.env`): настройки LLM (`llm_base_url`, `llm_model`, `llm_max_tokens`, `llm_timeout`, `llm_max_retries`), опционально `rag_index_dir` для пути к индексу FAISS (по умолчанию `data/faiss_index/`).
+Переменные окружения (или `.env`):
+
+| Переменная | Описание | Значение по умолчанию |
+|---|---|---|
+| `LLM_BASE_URL` | URL LLM API | — |
+| `LLM_MODEL` | Модель LLM | — |
+| `LLM_MAX_TOKENS` | Лимит токенов ответа | 1024 |
+| `LLM_TIMEOUT` | Таймаут LLM (секунды) | 60 |
+| `LLM_MAX_RETRIES` | Повторы при ошибках LLM | 2 |
+| `ENABLE_TOKEN_METER` | Логирование расхода токенов | false |
+| `RAG_EMBEDDING_MODEL` | Модель эмбеддингов | `intfloat/multilingual-e5-small` |
+| `RAG_CHUNK_SIZE` | Размер чанка (символы) | 512 |
+| `RAG_CHUNK_OVERLAP` | Перекрытие чанков | 64 |
+| `RAG_DEFAULT_K` | Top-k по умолчанию | 5 |
+| `RAG_RELEVANCE_THRESHOLD` | Порог релевантности | 0.3 |
+| `DATABASE_URL` | Postgres connection string | — |
+| `QDRANT_URL` | Qdrant REST endpoint | `http://localhost:6333` |
+| `QDRANT_COLLECTION` | Имя коллекции Qdrant | `kb_chunks_v1` |
+| `MCP_SERVER_URL` | URL MCP-сервера | `http://localhost:8001/mcp` |
 
 ## Тесты
 
