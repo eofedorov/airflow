@@ -1,4 +1,5 @@
 """Четыре MCP-инструмента: kb_search, kb_get_chunk, sql_read, kb_ingest."""
+import logging
 import re
 import time
 from datetime import date, datetime
@@ -23,6 +24,8 @@ from app.mcp.server.policy import (
     validate_query,
     validate_sql,
 )
+
+log = logging.getLogger(__name__)
 
 # Извлечение таблиц из SELECT: FROM schema.table или JOIN schema.table
 _TABLE_REF = re.compile(
@@ -64,6 +67,7 @@ def kb_search(
     Поиск по базе знаний: семантический поиск по запросу.
     Возвращает chunks: [{id, score, doc_meta, preview}].
     """
+    log.info("[MCP] kb_search query=%r k=%s", query[:80] + "..." if len(query) > 80 else query, k)
     start = time.perf_counter()
     args = {"query": query, "k": k, "filters": filters}
     result_meta: dict[str, Any] = {}
@@ -78,9 +82,9 @@ def kb_search(
                 "score": round(score, 4),
                 "doc_meta": {
                     "doc_id": meta.get("doc_id"),
+                    "doc_key": meta.get("doc_key"),
                     "title": meta.get("title"),
                     "doc_type": meta.get("doc_type"),
-                    "project": meta.get("project"),
                 },
                 "preview": truncate_preview(meta.get("text", ""), 300),
             }
@@ -88,6 +92,7 @@ def kb_search(
         ]
         result_meta = {"chunk_count": len(previews)}
         duration_ms = int((time.perf_counter() - start) * 1000)
+        log.info("[MCP] kb_search done chunk_count=%d duration_ms=%d", len(previews), duration_ms)
         audit_log(
             "kb_search",
             args=args,
@@ -99,6 +104,7 @@ def kb_search(
         return {"chunks": previews}
     except PolicyError as e:
         duration_ms = int((time.perf_counter() - start) * 1000)
+        log.error("[MCP] kb_search blocked %s", e)
         audit_log(
             "kb_search",
             args=args,
@@ -111,6 +117,7 @@ def kb_search(
         raise
     except Exception as e:
         duration_ms = int((time.perf_counter() - start) * 1000)
+        log.exception("[MCP] kb_search error: %s", e)
         audit_log(
             "kb_search",
             args=args,
@@ -128,6 +135,7 @@ def kb_get_chunk(chunk_id: str, run_id: str | None = None) -> dict[str, Any]:
     """
     Получить полный текст и метаданные чанка по chunk_id.
     """
+    log.info("[MCP] kb_get_chunk chunk_id=%s", chunk_id)
     start = time.perf_counter()
     args = {"chunk_id": chunk_id}
     result_meta: dict[str, Any] = {}
@@ -147,11 +155,13 @@ def kb_get_chunk(chunk_id: str, run_id: str | None = None) -> dict[str, Any]:
                 duration_ms=duration_ms,
                 run_id=run_id,
             )
+            log.info("[MCP] kb_get_chunk done found=False")
             return {"chunk_id": chunk_id, "text": "", "meta": {}, "found": False}
         vector = data.pop("vector", None)
         text = data.get("text", "")
         result_meta = {"found": True, "text_len": len(text)}
         duration_ms = int((time.perf_counter() - start) * 1000)
+        log.info("[MCP] kb_get_chunk done found=True text_len=%d duration_ms=%d", len(text), duration_ms)
         audit_log(
             "kb_get_chunk",
             args=args,
@@ -163,6 +173,7 @@ def kb_get_chunk(chunk_id: str, run_id: str | None = None) -> dict[str, Any]:
         return {"chunk_id": chunk_id, "text": text, "meta": data, "found": True}
     except PolicyError as e:
         duration_ms = int((time.perf_counter() - start) * 1000)
+        log.error("[MCP] kb_get_chunk blocked %s", e)
         audit_log(
             "kb_get_chunk",
             args=args,
@@ -175,6 +186,7 @@ def kb_get_chunk(chunk_id: str, run_id: str | None = None) -> dict[str, Any]:
         raise
     except Exception as e:
         duration_ms = int((time.perf_counter() - start) * 1000)
+        log.exception("[MCP] kb_get_chunk error: %s", e)
         audit_log(
             "kb_get_chunk",
             args=args,
@@ -193,6 +205,7 @@ def sql_read(query: str, run_id: str | None = None) -> dict[str, Any]:
     Выполнить только SELECT по разрешённым таблицам (allowlist). Максимум 200 строк.
     Возвращает columns, rows, row_count.
     """
+    log.info("[MCP] sql_read query=%r", query[:100] + "..." if len(query) > 100 else query)
     start = time.perf_counter()
     args = {"query": query}
     result_meta: dict[str, Any] = {}
@@ -205,6 +218,7 @@ def sql_read(query: str, run_id: str | None = None) -> dict[str, Any]:
         rows = [[_serialize_cell(x) for x in row] for row in rows]
         result_meta = {"row_count": row_count, "column_count": len(columns)}
         duration_ms = int((time.perf_counter() - start) * 1000)
+        log.info("[MCP] sql_read done row_count=%d duration_ms=%d", row_count, duration_ms)
         audit_log(
             "sql_read",
             args=args,
@@ -216,6 +230,7 @@ def sql_read(query: str, run_id: str | None = None) -> dict[str, Any]:
         return {"columns": columns, "rows": rows, "row_count": row_count}
     except PolicyError as e:
         duration_ms = int((time.perf_counter() - start) * 1000)
+        log.error("[MCP] sql_read blocked %s", e)
         audit_log(
             "sql_read",
             args=args,
@@ -228,6 +243,7 @@ def sql_read(query: str, run_id: str | None = None) -> dict[str, Any]:
         raise
     except Exception as e:
         duration_ms = int((time.perf_counter() - start) * 1000)
+        log.exception("[MCP] sql_read error: %s", e)
         audit_log(
             "sql_read",
             args=args,
@@ -246,6 +262,7 @@ def kb_ingest(run_id: str | None = None) -> dict[str, Any]:
     Запустить индексацию базы знаний: загрузка документов -> чанкинг -> эмбеддинги -> Qdrant.
     Возвращает docs_indexed, chunks_indexed, duration_ms.
     """
+    log.info("[MCP] kb_ingest start")
     start = time.perf_counter()
     args: dict[str, Any] = {}
     result_meta: dict[str, Any] = {}
@@ -253,6 +270,10 @@ def kb_ingest(run_id: str | None = None) -> dict[str, Any]:
         result = run_ingestion()
         result_meta = result
         duration_ms = int((time.perf_counter() - start) * 1000)
+        log.info(
+            "[MCP] kb_ingest done docs_indexed=%s chunks_indexed=%s duration_ms=%d",
+            result.get("docs_indexed"), result.get("chunks_indexed"), duration_ms,
+        )
         audit_log(
             "kb_ingest",
             args=args,
@@ -264,6 +285,7 @@ def kb_ingest(run_id: str | None = None) -> dict[str, Any]:
         return result
     except Exception as e:
         duration_ms = int((time.perf_counter() - start) * 1000)
+        log.exception("[MCP] kb_ingest error: %s", e)
         audit_log(
             "kb_ingest",
             args=args,

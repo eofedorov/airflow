@@ -11,11 +11,9 @@ _DEFAULT_ROW_LIMIT = 200
 def insert_document(
     conn: Connection,
     *,
-    source: str = "local_fs",
     doc_key: str,
     title: str,
     doc_type: str = "general",
-    project: str = "core",
     language: str = "ru",
     version: str = "v1",
     sha256: str | None = None,
@@ -23,11 +21,11 @@ def insert_document(
     """Вставить документ в llm.kb_documents. Возвращает doc_id."""
     row = conn.execute(
         """
-        INSERT INTO llm.kb_documents (source, doc_key, title, doc_type, project, language, version, sha256)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO llm.kb_documents (doc_key, title, doc_type, language, version, sha256)
+        VALUES (%s, %s, %s, %s, %s, %s)
         RETURNING doc_id
         """,
-        (source, doc_key, title, doc_type, project, language, version, sha256),
+        (doc_key, title, doc_type, language, version, sha256),
     ).fetchone()
     return row[0]
 
@@ -37,7 +35,7 @@ def get_document_by_sha256(conn: Connection, sha256: str) -> dict[str, Any] | No
     with conn.cursor(row_factory=dict_row) as cur:
         row = cur.execute(
             """
-            SELECT doc_id, source, doc_key, title, doc_type, project, language, version, sha256, created_at, updated_at, is_active
+            SELECT doc_id, doc_key, title, doc_type, language, version, sha256, created_at, updated_at, is_active
             FROM llm.kb_documents
             WHERE sha256 = %s AND is_active = TRUE
             LIMIT 1
@@ -100,7 +98,7 @@ def get_chunk_by_id(conn: Connection, chunk_id: UUID) -> dict[str, Any] | None:
         row = cur.execute(
             """
             SELECT c.chunk_id, c.doc_id, c.chunk_index, c.section, c.text, c.text_tokens_est, c.embedding_ref, c.created_at,
-                   d.doc_key, d.title, d.doc_type, d.project, d.language
+                   d.doc_key, d.title, d.doc_type, d.language
             FROM llm.kb_chunks c
             JOIN llm.kb_documents d ON d.doc_id = c.doc_id
             WHERE c.chunk_id = %s

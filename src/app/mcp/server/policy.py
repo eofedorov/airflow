@@ -5,7 +5,7 @@ from typing import Any
 # Лимиты из плана
 MAX_QUERY_LEN = 1000
 K_MIN, K_MAX = 1, 10
-ALLOWED_FILTER_KEYS = frozenset({"doc_type", "project", "language"})
+ALLOWED_FILTER_KEYS = frozenset({"doc_type", "language"})
 SQL_MAX_ROWS = 200
 FORBIDDEN_SQL_KEYWORDS = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|COPY|TRUNCATE)\b",
