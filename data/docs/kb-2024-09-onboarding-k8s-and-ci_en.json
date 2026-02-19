@@ -1,0 +1,8 @@
+{
+  "doc_key": "kb-2024-09-onboarding-k8s-and-ci",
+  "title": "Onboarding Guide: CI/CD and Kubernetes Basics for This Platform",
+  "doc_type": "onboarding",
+  "created_at": "2024-09-14",
+  "content": "# Overview\nThis guide covers how we build, test, and deploy services using GitHub Actions, Docker, and Kubernetes.\n\n# CI: GitHub Actions\nEach service has`.github/workflows/ci.yml`with jobs:\n-`lint`(ruff 0.4.x)\n-`test`(pytest)\n-`build`(docker buildx)\n-`push`(container registry)\n\nConventions:\n- Image tag:`<service>:<git-sha>`\n- Release tag: `<service>:v<semver>`\n\n# Deployment flow\n- Merges to `main`deploy to staging.\n- Manual promotion to prod via workflow`promote.yml`.\n\n# Kubernetes namespaces\n- `ecommerce-staging`\n- `ecommerce-prod`\n\n# Common kubectl commands\n- Rollout status:\n```bash\nkubectl -n ecommerce-prod rollout status deploy/cart-service\n```\n- Events:\n```bash\nkubectl -n ecommerce-prod get events --sort-by=.metadata.creationTimestamp | tail -n 50\n```\n\n# Config and secrets\n- ConfigMaps: non-sensitive config.\n- Secrets: Stripe keys, DB passwords.\n\nCommon failure:\n- Missing secret key -> pydantic validation errors at startup.\n\n# Observability\n- Prometheus scrapes `/metrics`.\n- Grafana dashboards are grouped by service.\n\n# Edge cases\n- Readiness probes can block rollout even if service is healthy locally.\n- If you accidentally point migrations at PgBouncer, you can get confusing errors.\n\n# Related docs\n- Runbook: RB-2025-06 rollout stuck\n- Checklist: CL-2025-09 prod deploy\n",
+  "language": "en"
+}

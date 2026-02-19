@@ -1,0 +1,8 @@
+{
+  "doc_key": "kb-2025-12-postmortem-es-disk-watermark",
+  "title": "Postmortem: Elasticsearch Disk Watermark Caused Search Outage",
+  "doc_type": "postmortem",
+  "created_at": "2025-12-18",
+  "content": "# Incident summary\nOn 2025-12-17, Elasticsearch cluster entered red state due to disk watermark thresholds on two data nodes. Shards became unassigned, and search-api returned 503 for a significant portion of requests.\n\n# Impact\n- Duration: 1h 12m\n- 38% of search requests failed (503)\n- Indexing lag grew to 4.6M messages\n\n# Timeline\n- 08:41 UTC: Disk usage crosses high watermark\n- 08:47: Cluster status turns yellow\n- 09:02: Cluster status turns red; unassigned primaries\n- 09:05: Oncall disables aggregations and scales indexing-worker to 0\n- 09:18: Old indices deleted to free space\n- 09:31: Cluster returns to yellow, then green\n- 09:53: Indexing resumes with smaller bulk size\n\n# Root cause\nILM policy`products-ilm-v3`failed to delete old indices because the policy referenced an outdated index pattern after an aliasing change. As a result, indices older than 14 days accumulated.\n\n# Contributing factors\n- No alert on ILM failures\n- Bulk indexing size was 1000, causing high segment merge pressure\n- Disk autoscaling was disabled for cost reasons\n\n# Resolution\n- Manually deleted old indices\n- Fixed ILM pattern\n- Reduced`INDEXING_BULK_SIZE`to 250 temporarily\n\n# Action items\n1. Add alert on ILM errors and on disk watermark thresholds.\n2. Add a weekly operational checklist item to verify retention.\n3. Validate ADR-2025-02 aliasing rollout steps include ILM pattern updates.\n\n# Related\n- Runbook: RB-2025-10 ES cluster red\n- ADR: ADR-2025-02 ES aliasing\n",
+  "language": "en"
+}

@@ -1,0 +1,8 @@
+{
+  "doc_key": "kb-2024-08-adr-pgbouncer",
+  "title": "ADR-2024-08: Introduce PgBouncer Transaction Pooling for Postgres",
+  "doc_type": "adr",
+  "created_at": "2024-08-22",
+  "content": "# Status\nAccepted\n\n# Context\nWe operate multiple web services and workers, each with its own DB pool. Under load, the sum of pools exceeds Postgres capacity, resulting in incidents with `too many clients already`.\n\n# Decision\nAdopt PgBouncer in **transaction pooling** mode for all services.\n- Postgres remains primary.\n- Services connect to PgBouncer at port 6432.\n\n# Technical details\n## PgBouncer settings\n- `pool_mode = transaction`\n- `max_client_conn = 5000`\n- `default_pool_size = 50`\n- `reserve_pool_size = 10`\n- `server_idle_timeout = 60`\n\n## Service configuration\n- Replace direct DB host with `pgbouncer.ecommerce-prod.svc`\n- SQLAlchemy async:\n  - `pool_size=10`\n  - `max_overflow=5`\n\n## Limitations\nTransaction pooling breaks session-level features:\n- prepared statements\n- temp tables across transactions\n- session settings (must be set per transaction)\n\nFor services requiring session features (rare), we allow direct connections behind an exception process.\n\n# Consequences\n- Lower connection pressure on Postgres\n- Additional operational component (PgBouncer)\n\n# Rollout plan\n1. Deploy PgBouncer and validate health.\n2. Migrate services one by one.\n3. Add alert on Postgres connection usage.\n\n# Edge cases\n- Node payment-gateway must disable statement-level prepared queries if it assumes session pooling.\n- Alembic migrations should run against primary Postgres, not PgBouncer.\n\n# References\n- Runbook: RB-2024-11 Postgres connection exhaustion\n",
+  "language": "en"
+}

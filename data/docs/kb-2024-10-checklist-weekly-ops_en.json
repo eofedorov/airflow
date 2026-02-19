@@ -1,0 +1,8 @@
+{
+  "doc_key": "kb-2024-10-checklist-weekly-ops",
+  "title": "Operational Checklist: Weekly Platform Ops (Cache, Search, Payments)",
+  "doc_type": "checklist",
+  "created_at": "2024-10-05",
+  "content": "# Purpose\nWeekly checks to catch slow-burn issues (retention failures, creeping connection usage, webhook drift) before they become incidents.\n\n# Redis\n- [ ] Check memory usage trend and eviction count.\n- [ ] Sample key sizes for`cart:*`and`stripe:*`prefixes.\n- [ ] Verify`maxmemory-policy`remains`allkeys-lfu`.\n\n# Postgres\n- [ ] Check connection usage and top application_name consumers.\n- [ ] Check for `idle in transaction`sessions.\n- [ ] Review slow queries > 500ms from logs.\n\n# Elasticsearch\n- [ ] Verify cluster health green.\n- [ ] Verify ILM policy`products-ilm-v3`is active and not erroring.\n- [ ] Confirm retention: no`products-v3-*`older than 14 days unless explicitly needed.\n\n# Stripe / payments\n- [ ] Stripe webhook endpoint success rate over last 7 days.\n- [ ] Confirm`STRIPE_WEBHOOK_SECRET`unchanged and deployed consistently.\n- [ ] Check backlog metric`stripe_webhook_queue_depth`.\n\n# Kubernetes\n- [ ] Review CrashLoopBackOff counts.\n- [ ] Ensure resource requests/limits are not drifting (especially checkout-service).\n\n# Notes\nIf any check shows concerning trend (e.g., ES disk rising, Redis value sizes increasing), create an ops ticket and link to the relevant runbook.\n",
+  "language": "en"
+}
