@@ -43,7 +43,7 @@ class QdrantStore:
     def upsert(self, points: list[tuple[str, list[float], dict[str, Any]]]) -> None:
         """
         Добавить/обновить точки. Каждый элемент: (chunk_id, vector, payload).
-        Payload: doc_id, doc_key, title, doc_type, project, language, chunk_id, chunk_index, section, text.
+        Payload: doc_id, doc_key, title, doc_type, language, chunk_id, chunk_index, section, text.
         """
         if not points:
             return
@@ -57,7 +57,6 @@ class QdrantStore:
                     "doc_key": str(p.get("doc_key", "")),
                     "title": str(p.get("title", "")),
                     "doc_type": str(p.get("doc_type", "")),
-                    "project": str(p.get("project", "")),
                     "language": str(p.get("language", "")),
                     "chunk_id": str(p.get("chunk_id", chunk_id)),
                     "chunk_index": int(p.get("chunk_index", 0)),
@@ -77,7 +76,7 @@ class QdrantStore:
     ) -> list[tuple[str, float, dict[str, Any]]]:
         """
         Поиск по вектору. Возвращает список (chunk_id, score, payload).
-        filters: опционально doc_type, project, language (allowlist из policy).
+        filters: опционально doc_type, language (allowlist из policy).
         """
         self.ensure_collection()
         query_filter = None
@@ -87,25 +86,21 @@ class QdrantStore:
                 must.append(
                     FieldCondition(key="doc_type", match=MatchValue(value=filters["doc_type"]))
                 )
-            if "project" in filters and filters["project"]:
-                must.append(
-                    FieldCondition(key="project", match=MatchValue(value=filters["project"]))
-                )
             if "language" in filters and filters["language"]:
                 must.append(
                     FieldCondition(key="language", match=MatchValue(value=filters["language"]))
                 )
             if must:
                 query_filter = Filter(must=must)
-        hits = self._client.search(
+        response = self._client.query_points(
             collection_name=self._collection,
-            query_vector=query_vector,
+            query=query_vector,
             limit=k,
             query_filter=query_filter,
         )
         return [
-            (str(h.id), float(h.score), h.payload or {})
-            for h in hits
+            (str(p.id), float(p.score), p.payload or {})
+            for p in response.points
         ]
 
     def get_by_id(self, chunk_id: str) -> dict[str, Any] | None:
