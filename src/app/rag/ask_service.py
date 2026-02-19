@@ -39,9 +39,10 @@ def ask(
     do_retrieve = _retrieve if _retrieve is not None else retrieve
     k_val = k if k is not None else _settings.rag_default_k
 
+    logger.info("[RAG] ask question=%r k=%s", question.strip()[:80], k_val)
     chunks = do_retrieve(question.strip(), k=k_val, filters=filters or None)
     doc_ids = [m.get("doc_id") for _, _, m in chunks]
-    logger.info("[RAG ask] chunks_used=%d doc_ids=%s", len(chunks), doc_ids)
+    logger.info("[RAG] ask chunks_used=%d doc_ids=%s", len(chunks), doc_ids)
 
     if not chunks:
         return AnswerContract(
@@ -77,7 +78,7 @@ def ask(
     if contract.sources and contract.status == "ok":
         avg_rel = sum(s.relevance for s in contract.sources) / len(contract.sources)
         if avg_rel < _settings.rag_relevance_threshold:
-            logger.info("[RAG ask] avg relevance %.2f < threshold, forcing insufficient_context", avg_rel)
+            logger.info("[RAG] ask avg_relevance=%.2f < threshold -> insufficient_context", avg_rel)
             return AnswerContract(
                 answer=INSUFFICIENT_ANSWER,
                 confidence=0.0,

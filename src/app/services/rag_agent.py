@@ -40,11 +40,13 @@ def _parse_answer(content: str | None) -> AnswerContract | None:
     raw = _extract_json_from_text(content)
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.error("_parse_answer JSON decode error: %s", e)
         return None
     try:
         return AnswerContract.model_validate(data)
-    except Exception:
+    except Exception as e:
+        logger.error("_parse_answer validation error: %s", e)
         return None
 
 
@@ -57,9 +59,10 @@ def ask(
     Agent loop: получить tools из MCP -> цикл LLM + tool_calls (до 6 вызовов) -> разобрать финальный ответ в AnswerContract.
     При отсутствии валидного ответа или превышении лимита возвращает insufficient_context.
     """
+    logger.info("[AGENT] ask question=%r", question.strip()[:80] if len(question.strip()) > 80 else question.strip())
     tools = mcp_list_tools(mcp_url)
     if not tools:
-        logger.warning("[rag_agent] no MCP tools, returning insufficient_context")
+        logger.warning("[AGENT] no MCP tools -> insufficient_context")
         return AnswerContract(
             answer=INSUFFICIENT_ANSWER,
             confidence=0.0,
@@ -85,7 +88,9 @@ def ask(
         if not tool_calls and content:
             parsed = _parse_answer(content)
             if parsed is not None:
+                logger.info("[AGENT] done status=%s", parsed.status)
                 return parsed
+            logger.info("[AGENT] parse failed -> insufficient_context")
             return AnswerContract(
                 answer=INSUFFICIENT_ANSWER,
                 confidence=0.0,
@@ -114,13 +119,15 @@ def ask(
             try:
                 args_str = tc.function.arguments or "{}"
                 args = json.loads(args_str)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                logger.error("tool_call arguments JSON decode error name=%s: %s", name, e)
                 args = {}
             try:
+                logger.info("[AGENT] tool_call name=%s args=%s", name, list(args.keys()) if args else [])
                 result = mcp_call_tool(name, args, mcp_url=mcp_url, run_id=run_id)
                 result_str = json.dumps(result, ensure_ascii=False)
             except Exception as e:
-                logger.exception("[rag_agent] mcp call_tool failed: %s", e)
+                logger.exception("[AGENT] tool_call failed name=%s: %s", name, e)
                 result_str = json.dumps({"error": str(e)}, ensure_ascii=False)
             messages.append({
                 "role": "tool",
@@ -129,6 +136,7 @@ def ask(
             })
             total_tool_calls += 1
 
+    logger.info("[AGENT] max_tool_calls or no valid answer -> insufficient_context")
     return AnswerContract(
         answer=INSUFFICIENT_ANSWER,
         confidence=0.0,

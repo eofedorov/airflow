@@ -24,11 +24,13 @@ def _parse_and_validate(raw: str, schema_class: type):
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
+        logger.error("JSON decode error in _parse_and_validate: %s", e)
         return None, f"JSON decode error: {e}"
     try:
         model = schema_class.model_validate(data)
         return model, None
     except Exception as e:
+        logger.error("Validation error in _parse_and_validate: %s", e)
         return None, f"Validation error: {e}"
 
 

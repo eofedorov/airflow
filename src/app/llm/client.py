@@ -1,10 +1,13 @@
-from typing import Any
+import logging
 import os
+from typing import Any
+
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 
 from app.settings import Settings
 
+logger = logging.getLogger(__name__)
 _settings = Settings()
 
 
@@ -46,6 +49,7 @@ def call_llm(
                     return content.strip()
             return ""
         except Exception as e:
+            logger.error("call_llm attempt=%s failed: %s", attempt + 1, e)
             last_error = e
             if attempt == max_retries:
                 raise
@@ -101,6 +105,7 @@ def call_llm_with_tools(
             )
             return completion
         except Exception as e:
+            logger.error("call_llm_with_tools attempt=%s failed: %s", attempt + 1, e)
             last_error = e
             if attempt == max_retries:
                 raise
