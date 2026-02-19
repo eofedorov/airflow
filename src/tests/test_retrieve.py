@@ -35,7 +35,9 @@ def test_retrieve_after_ingest_returns_chunks():
     if not s.database_url or not s.qdrant_url:
         pytest.skip("database_url and qdrant_url required")
     try:
-        run_ingestion(kb_path=DATA_DIR)
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr("app.rag.ingest.loader.DEFAULT_KB_PATH", DATA_DIR)
+            run_ingestion()
     except Exception as e:
         if "connect" in str(e).lower() or "10061" in str(e) or "refused" in str(e).lower():
             pytest.skip("Postgres or Qdrant not available")

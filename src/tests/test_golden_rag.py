@@ -41,7 +41,9 @@ def store():
     """Один раз индексируем data/ в Postgres + Qdrant, возвращаем QdrantStore для retrieve."""
     _needs_postgres_qdrant()
     try:
-        run_ingestion(kb_path=DATA_DIR)
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr("app.rag.ingest.loader.DEFAULT_KB_PATH", DATA_DIR)
+            run_ingestion()
     except Exception as e:
         err = str(e).lower()
         if "connect" in err or "10061" in err or "connection" in err or "refused" in err:
@@ -49,7 +51,7 @@ def store():
         raise
     return QdrantStore()
 
-
+@pytest.mark.slow
 def test_golden_retrieve_ok_questions(store):
     """По всем questions*.json: каждый ok-вопрос даёт retrieval с чанком из expected_doc_ids."""
     golden_files = _golden_question_files()
@@ -66,11 +68,11 @@ def test_golden_retrieve_ok_questions(store):
             expected_ids = set(q.get("expected_doc_ids") or [])
             found_doc_ids = {m.get("doc_id") for _, _, m in results}
             if not expected_ids & found_doc_ids:
-                failed.append((path.name, q["question"][:50], expected_ids, list(found_doc_ids)[:3]))
+                failed.append((path.name, q["question"][:50], expected_ids, list(found_doc_keys)[:3]))
 
     assert not failed, f"Retrieve failed for {len(failed)} questions: {failed[:5]}"
 
-
+@pytest.mark.slow
 def test_golden_ask_insufficient_context():
     """По всем questions*.json: каждый insufficient_context при пустом retrieval даёт status insufficient_context."""
     golden_files = _golden_question_files()
