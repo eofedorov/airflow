@@ -1,0 +1,9 @@
+# MCP server. Install from repo root: pip install -e shared/common -e shared/db -e apps/mcp_server
+-e shared/common
+-e shared/db
+torch>=2.0.0
+sentence-transformers>=5.2.0
+qdrant-client>=1.16.0
+psycopg[binary,pool]>=3.3.0
+mcp>=1.26.0
+uvicorn[standard]>=0.41.0

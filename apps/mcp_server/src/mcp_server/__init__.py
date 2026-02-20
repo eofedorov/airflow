@@ -1,0 +1,1 @@
+"""MCP-server: tools (kb_search, kb_get_chunk, sql_read, kb_ingest), RAG, audit."""

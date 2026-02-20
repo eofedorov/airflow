@@ -6,193 +6,103 @@ AI-шлюз для инженерных задач: классификация/�
 
 - Python 3.10+
 - FastAPI, Pydantic, Jinja2, OpenAI API
-- RAG: Qdrant, sentence-transformers (только в образе MCP)
+- RAG: Qdrant, sentence-transformers (только в образе MCP-server)
 - Инфраструктура: Docker Compose (Postgres 16, Qdrant)
-- Сборка: hatchling
 
-## Инфраструктура (v3)
+## Структура монорепы
+
+- **apps/gateway** — оркестратор (FastAPI): запуск локально через uvicorn; эндпоинты `/run/*`, `/rag/*` (RAG через вызовы MCP).
+- **apps/mcp_server** — MCP-сервер (tools: kb_search, kb_get_chunk, sql_read, kb_ingest); в Docker через compose.
+- **shared/common** — базовые настройки (database_url, qdrant_*), контракты (schemas).
+- **shared/db** — пул Postgres, запросы (документы, чанки, аудит).
+- **infra/postgres** — init-скрипты БД (роли, схема `llm`).
+- **data/** — база знаний (документы для RAG), монтируется в контейнер mcp-server.
+
+## Инфраструктура
 
 Postgres и Qdrant поднимаются через Docker Compose:
 
 ```powershell
-docker compose up -d
+.\scripts\dev-up.ps1
+# или из корня:
+docker compose -f compose.yaml up -d
 ```
 
-Это запускает:
+Запускаются:
 
-- **Postgres 16** — порт 5432, БД `llm_gate`, схема `llm`
-- **Qdrant** — порт 6333 (REST), 6334 (gRPC), коллекция `kb_chunks_v1`
-
-При первом запуске (чистый volume) init-скрипты из `data/init_db/` автоматически создают роли, таблицы и начальные данные. При повторном запуске (volume уже есть) init пропускается.
+- **Postgres 16** — порт 5432, БД `llm_gate`, схема `llm` (init из `infra/postgres/`).
+- **Qdrant** — порт 6333 (REST), 6334 (gRPC).
+- **mcp-server** — порт 8001 (MCP tools, RAG).
 
 ### Postgres: схема `llm`
 
 | Таблица | Назначение |
 |---|---|
-| `kb_documents` | Реестр документов базы знаний (doc_key, title, doc_type, project, sha256) |
-| `kb_chunks` | Чанки документов (текст, section, embedding_ref) |
-| `runs` | Запуски обработки запросов (телеметрия, токены, стоимость) |
-| `run_retrievals` | Аудит retrieval: какие чанки использованы в запросе |
-| `tool_calls` | Аудит tool-calls MCP (args, duration_ms, status) |
-| `sql_allowlist` | Allowlist таблиц для инструмента `sql_read` |
+| `kb_documents` | Реестр документов базы знаний |
+| `kb_chunks` | Чанки документов |
+| `runs` | Телеметрия запусков |
+| `run_retrievals` | Аудит retrieval |
+| `tool_calls` | Аудит tool-calls MCP |
+| `sql_allowlist` | Allowlist для `sql_read` |
 
-Пользователи:
-
-| Роль | Права | Пароль (dev) |
-|---|---|---|
-| `llm_gate_admin` | owner схемы `llm` | `CHANGE_ME_admin_password` |
-| `llm_gate_service` | CRUD на все таблицы | `CHANGE_ME_service_password` |
-| `llm_gate_readonly` | только SELECT | `CHANGE_ME_readonly_password` |
-
-### Qdrant: коллекция `kb_chunks_v1`
-
-- Размерность: 384 (модель `intfloat/multilingual-e5-small`)
-- Метрика: Cosine
-- Payload: `doc_id`, `doc_key`, `title`, `doc_type`, `project`, `language`, `chunk_id`, `chunk_index`, `section`, `text`
+Пользователи (dev): `llm_gate_admin`, `llm_gate_service`, `llm_gate_readonly` (пароли в `infra/postgres/01_roles.sql`).
 
 ### Пересоздание с нуля
 
-Если нужно сбросить данные и переинициализировать:
-
 ```powershell
-docker compose down -v
-docker compose up -d
+docker compose -f compose.yaml down -v
+docker compose -f compose.yaml up -d
 ```
 
-Коллекция Qdrant создаётся отдельно (не через init-скрипты Postgres) — при пересоздании нужно создать её вручную или через ingestion pipeline.
+## Установка и запуск
 
-## Установка
+### Gateway (локально)
 
-**Только оркестратор** (локально, без RAG-зависимостей; `/rag/ingest` и `/rag/search` вызывают MCP):
-
-```powershell
-pip install -e ".[dev]"
-```
-
-**Полный стек** (оркестратор + тесты с индексацией и golden set, локальный RAG):
+Из корня репозитория:
 
 ```powershell
-pip install -e ".[dev,mcp]"
-```
-
-Два приложения собираются и запускаются независимо: оркестратор не тянет sentence-transformers/qdrant; MCP-сервер — отдельный образ с `.[mcp]`.
-
-## Запуск
-
-Из корня репозитория (после `pip install -e .`):
-
-```powershell
-uvicorn app.main:app --reload
-```
-
-Либо с явным путём к приложению:
-
-```powershell
-$env:PYTHONPATH = "src"
-uvicorn app.main:app --reload --app-dir src
+pip install -e shared/common
+pip install -e apps/gateway
+$env:PYTHONPATH = "apps/gateway/src"
+uvicorn gateway.main:app --reload --app-dir apps/gateway/src
 ```
 
 - API: http://127.0.0.1:8000
 - Документация: http://127.0.0.1:8000/docs
 
-### Сборка Docker (два образа)
+Для RAG-эндпоинтов нужен запущенный MCP-сервер (compose). В `.env` или `apps/gateway/dev.env` задать `MCP_SERVER_URL=http://127.0.0.1:8001` (или URL streamable HTTP MCP).
 
-**Оркестратор** (лёгкий образ, без PyTorch/sentence-transformers):
+### MCP-server (Docker)
 
-```powershell
-docker build -t llm-gate-orchestrator -f Dockerfile.orchestrator .
-```
-
-**MCP-сервер** (образ с RAG-зависимостями):
+Сборка и запуск через compose (контекст — корень репо):
 
 ```powershell
-docker build -t llm-gate-mcp-deps -f Dockerfile.mcp.deps .
-docker build -t llm-gate-mcp -f Dockerfile.mcp .
+docker compose -f compose.yaml up -d --build mcp-server
 ```
 
-Оркестратор для `/rag/ingest` и `/rag/search` обращается к MCP по `MCP_SERVER_URL`; контейнеры можно поднимать и масштабировать независимо.
+Образ собирается из `apps/mcp_server/Dockerfile`; в контейнер копируются `shared/common`, `shared/db` и код `apps/mcp_server`.
 
 ## Эндпоинты
 
-### Промпты (классификация / извлечение)
-
-```mermaid
-flowchart LR
-  API["POST /run/{name}"]
-  Registry["Prompt Registry"]
-  Context["Context Builder"]
-  LLM["LLM Client"]
-  Validator["Schema Validator"]
-  Repair["Repair if needed"]
-  JSON["Strict JSON"]
-  API --> Registry --> Context --> LLM --> Validator --> Repair --> JSON
-```
-
-- `GET /prompts` — список промптов и версий
-- `POST /run/{prompt_name}` — выполнить промпт (body: `version`, `task`, `input`, `constraints`)
-
-Пример:
-
-```powershell
-curl -X POST http://127.0.0.1:8000/run/classify -H "Content-Type: application/json" -d '{\"version\": \"v1\", \"task\": \"Classify\", \"input\": \"После релиза 2.1.3 на странице оплаты 500 ошибка.\"}'
-```
-
-### RAG (база знаний)
-
-```mermaid
-flowchart LR
-  subgraph ingest [Ingestion]
-    Load[loader]
-    Chunk[chunker]
-    Embed[embedding]
-    Store[Qdrant store]
-    Load --> Chunk --> Embed --> Store
-  end
-  subgraph api [API]
-    IngestEP["POST /rag/ingest"]
-    SearchEP["GET /rag/search"]
-    AskEP["POST /rag/ask"]
-  end
-  IngestEP --> ingest
-  SearchEP --> Retrieve[retrieve top-k]
-  AskEP --> Retrieve
-  Store --> Retrieve
-  Retrieve --> Gen[Generation + citations]
-  Gen --> AskEP
-```
-
-- `POST /rag/ingest` — индексация документов из `data/` (все `*.json` с массивом `documents`) в Qdrant (ответ: `docs_indexed`, `chunks_indexed`, `duration_ms`)
-- `GET /rag/search?q=...&k=5` — поиск чанков по запросу
-- `POST /rag/ask` — ответ по контракту с цитатами (body: `question`, `k`, `filters?`, `strict_mode`)
-
-Перед поиском и ответами нужно один раз вызвать `POST /rag/ingest`. В `data/` могут лежать несколько файлов (например `knowledge_base.json`, `knowledge_base_rus.json`) — все подхватываются при индексации.
+- `GET /prompts` — список промптов и версий.
+- `POST /run/{prompt_name}` — выполнить промпт (body: `version`, `task`, `input`, `constraints`).
+- `POST /rag/ingest` — индексация базы знаний (через MCP tool `kb_ingest`).
+- `GET /rag/search?q=...&k=5` — поиск чанков (через MCP tool `kb_search`).
+- `POST /rag/ask` — ответ по контракту с цитатами (agent: MCP tools + LLM).
 
 ## Конфигурация
 
-Переменные окружения (или `.env`):
+Переменные окружения (корневой `.env` или app-specific `dev.env`):
 
-| Переменная | Описание | Значение по умолчанию |
-|---|---|---|
-| `LLM_BASE_URL` | URL LLM API | — |
-| `LLM_MODEL` | Модель LLM | — |
-| `LLM_MAX_TOKENS` | Лимит токенов ответа | 1024 |
-| `LLM_TIMEOUT` | Таймаут LLM (секунды) | 60 |
-| `LLM_MAX_RETRIES` | Повторы при ошибках LLM | 2 |
-| `ENABLE_TOKEN_METER` | Логирование расхода токенов | false |
-| `RAG_EMBEDDING_MODEL` | Модель эмбеддингов | `intfloat/multilingual-e5-small` |
-| `RAG_CHUNK_SIZE` | Размер чанка (символы) | 512 |
-| `RAG_CHUNK_OVERLAP` | Перекрытие чанков | 64 |
-| `RAG_DEFAULT_K` | Top-k по умолчанию | 5 |
-| `RAG_RELEVANCE_THRESHOLD` | Порог релевантности | 0.3 |
-| `DATABASE_URL` | Postgres connection string | — |
-| `QDRANT_URL` | Qdrant REST endpoint | `http://localhost:6333` |
-| `QDRANT_COLLECTION` | Имя коллекции Qdrant | `kb_chunks_v1` |
-| `MCP_SERVER_URL` | URL MCP-сервера | `http://localhost:8001/mcp` |
+| Переменная | Описание |
+|---|---|
+| `DATABASE_URL` | Postgres (общая для mcp_server и db) |
+| `QDRANT_URL`, `QDRANT_COLLECTION` | Qdrant |
+| `LLM_BASE_URL`, `LLM_MODEL`, `LLM_MAX_TOKENS`, `LLM_TIMEOUT`, `LLM_MAX_RETRIES` | Gateway: LLM API |
+| `MCP_SERVER_URL`, `MCP_TIMEOUT` | Gateway: MCP-сервер |
+| `RAG_EMBEDDING_MODEL`, `RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`, `RAG_DEFAULT_K` | MCP-server: RAG |
+| `KB_PATH` | MCP-server: путь к базе знаний (в контейнере: `/app/data/docs`) |
 
 ## Тесты
 
-```powershell
-pytest
-```
-
-Из корня репозитория; `pythonpath` и `testpaths` заданы в `pyproject.toml`. Golden set в одном тесте: один ingest из `data/`, затем проверки по английскому (`questions.json`) и русскому (`questions_rus.json`) наборам (15+5 вопросов каждый). Медленные тесты (ingest + retrieval) можно отключить: `pytest -m "not slow"`. Для них нужна установка с `.[dev,mcp]`.
+Из корня репозитория установить shared и нужный app, затем запускать pytest в каталоге приложения (например `apps/gateway`, `apps/mcp_server`) с `PYTHONPATH`, включающим `shared/common/src`, `shared/db/src` и `apps/<app>/src`. Скрипт `scripts/test.ps1` — заготовка.

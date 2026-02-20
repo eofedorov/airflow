@@ -1,33 +1,27 @@
 {
-    "version": "0.2.0",
-    "configurations": [
-        
-      {
-        "name": "LLM-Gate (uvicorn)",
-        "type": "debugpy",
-        "request": "launch",
-        "module": "uvicorn",
-        "args": ["app.main:app", "--reload", "--host", "127.0.0.1", "--port", "8000"],
-        "cwd": "${workspaceFolder}",
-        "env": {
-          "PYTHONPATH": "${workspaceFolder}/src"
-        },
-        "console": "integratedTerminal",
-        "justMyCode": false
-      },
-      {
-        "name": "LLM-Gate (uvicorn, no reload)",
-        "type": "debugpy",
-        "request": "launch",
-        "module": "uvicorn",
-        "args": ["app.main:app", "--host", "127.0.0.1", "--port", "8000"],
-        "cwd": "${workspaceFolder}",
-        "env": {
-          "PYTHONPATH": "${workspaceFolder}/src"
-        },
-        "console": "integratedTerminal",
-        "justMyCode": false
-      }
-    ]
-  }
-  
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Gateway (uvicorn)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["gateway.main:app", "--reload", "--host", "127.0.0.1", "--port", "8000"],
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}/apps/gateway/src" },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Gateway (uvicorn, no reload)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["gateway.main:app", "--host", "127.0.0.1", "--port", "8000"],
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}/apps/gateway/src" },
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ]
+}
