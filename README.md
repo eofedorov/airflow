@@ -13,6 +13,7 @@ AI-шлюз для инженерных задач: классификация/�
 
 - **apps/gateway** — оркестратор (FastAPI): запуск локально через uvicorn; эндпоинты `/run/*`, `/rag/*` (RAG через вызовы MCP).
 - **apps/mcp_server** — MCP-сервер (tools: kb_search, kb_get_chunk, sql_read, kb_ingest); в Docker через compose.
+- **apps/datastore** — хранилище документов (FastAPI): upload/read/delete; в Docker через compose; при ingest MCP-server может загружать документы с эндпоинта `/read` вместо диска.
 - **shared/common** — базовые настройки (database_url, qdrant_*), контракты (schemas).
 - **shared/db** — пул Postgres, запросы (документы, чанки, аудит).
 - **infra/postgres** — init-скрипты БД (роли, схема `llm`).
@@ -33,6 +34,7 @@ docker compose -f compose.yaml up -d
 - **Postgres 16** — порт 5432, БД `llm_gate`, схема `llm` (init из `infra/postgres/`).
 - **Qdrant** — порт 6333 (REST), 6334 (gRPC).
 - **mcp-server** — порт 8001 (MCP tools, RAG).
+- **datastore** — порт 8002 (upload/read/delete документов для RAG; при заданном `DATASTORE_URL` ingest загружает документы отсюда).
 
 ### Postgres: схема `llm`
 
@@ -101,7 +103,8 @@ docker compose -f compose.yaml up -d --build mcp-server
 | `LLM_BASE_URL`, `LLM_MODEL`, `LLM_MAX_TOKENS`, `LLM_TIMEOUT`, `LLM_MAX_RETRIES` | Gateway: LLM API |
 | `MCP_SERVER_URL`, `MCP_TIMEOUT` | Gateway: MCP-сервер |
 | `RAG_EMBEDDING_MODEL`, `RAG_CHUNK_SIZE`, `RAG_CHUNK_OVERLAP`, `RAG_DEFAULT_K` | MCP-server: RAG |
-| `KB_PATH` | MCP-server: путь к базе знаний (в контейнере: `/app/data/docs`) |
+| `KB_PATH` | MCP-server: путь к базе знаний (в контейнере: `/app/data/docs`). Используется только если `DATASTORE_URL` не задан. |
+| `DATASTORE_URL` | MCP-server: URL сервиса datastore (например `http://datastore:8002`). Если задан, при запросе **ingest** документы загружаются с эндпоинта `GET {DATASTORE_URL}/read` вместо чтения с диска по `KB_PATH`. В compose по умолчанию задаётся для mcp-server. |
 
 ## Тесты
 

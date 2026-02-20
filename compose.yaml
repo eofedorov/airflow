@@ -34,6 +34,23 @@ services:
     networks:
       - llm_net
 
+  datastore:
+    build:
+      context: .
+      dockerfile: apps/datastore/Dockerfile
+    ports:
+      - "8002:8002"
+    volumes:
+      - datastore_kb:/app/data/knowledge_base
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8002/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - llm_net
+
   mcp-server:
     build:
       context: .
@@ -53,18 +70,22 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_healthy
+      datastore:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://llm_gate_service:CHANGE_ME_service_password@postgres:5432/llm_gate
       QDRANT_URL: http://qdrant:6333
       QDRANT_COLLECTION: kb_chunks_v1
       RAG_EMBEDDING_MODEL: intfloat/multilingual-e5-small
       KB_PATH: /app/data/docs
+      DATASTORE_URL: http://datastore:8002
     networks:
       - llm_net
 
 volumes:
   pgdata:
   qdrant_data:
+  datastore_kb:
 
 networks:
   llm_net:
