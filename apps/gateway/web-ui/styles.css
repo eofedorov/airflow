@@ -1,0 +1,148 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem;
+  color: #1a1a1a;
+  background: #fafafa;
+}
+
+header {
+  margin-bottom: 1.5rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem 0;
+}
+
+.block {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.block form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.block input[type="text"],
+.block input[type="number"],
+.block textarea {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.block input[type="number"] {
+  width: 4rem;
+}
+
+.block textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 4rem;
+}
+
+.block button {
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-weight: 500;
+  color: #fff;
+  background: #2563eb;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.block button:hover {
+  background: #1d4ed8;
+}
+
+.block button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.result {
+  min-height: 1rem;
+  font-size: 0.9rem;
+}
+
+.result.loading {
+  color: #666;
+}
+
+.result.error {
+  color: #b91c1c;
+}
+
+.result .hit {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: #f9fafb;
+}
+
+.result .hit .title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.result .hit .path {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin-bottom: 0.25rem;
+}
+
+.result .hit .preview {
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+.result .answer-block {
+  margin-bottom: 0.75rem;
+}
+
+.result .sources {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.result .source {
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  background: #f9fafb;
+  border-radius: 4px;
+}
+
+.result .source .doc-title {
+  font-weight: 600;
+}
+
+.result .source .quote {
+  margin-top: 0.25rem;
+  color: #374151;
+}

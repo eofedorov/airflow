@@ -1,8 +1,10 @@
 """Точка входа FastAPI."""
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from gateway.api.routes import router
 from gateway.api import routes_rag
@@ -15,6 +17,10 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 app = FastAPI(title="LLM-Gate", description="AI-шлюз для инженерных задач")
 app.include_router(router, prefix="", tags=["run"])
 app.include_router(routes_rag.router, prefix="/rag", tags=["rag"])
+
+_web_ui_dir = Path(__file__).resolve().parent.parent.parent / "web-ui"
+if _web_ui_dir.is_dir():
+    app.mount("/", StaticFiles(directory=str(_web_ui_dir), html=True), name="web-ui")
 
 
 @app.exception_handler(MCPConnectionError)
