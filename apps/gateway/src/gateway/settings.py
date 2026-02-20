@@ -14,3 +14,4 @@ class Settings(BaseAppSettings):
     rag_default_k: int = 5
     mcp_server_url: str = ""
     mcp_timeout: int = 600
+    datastore_url: str = ""

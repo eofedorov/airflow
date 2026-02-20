@@ -1,7 +1,8 @@
-"""RAG API: POST /ingest, GET /search, POST /ask. Ingest и search идут через MCP."""
+"""RAG API: POST /upload, POST /ingest, GET /search, POST /ask. Upload — в datastore при заданном datastore_url."""
 import logging
 
-from fastapi import APIRouter, Query
+import httpx
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
 from common.contracts.rag_schemas import AnswerContract
@@ -33,6 +34,50 @@ class AskRequestBody(BaseModel):
     k: int = Field(default=_settings.rag_default_k, ge=1, le=20)
     filters: dict | None = None
     strict_mode: bool = False
+
+
+class UploadStubResponse(BaseModel):
+    message: str
+    files_count: int
+
+
+@router.post("/upload", response_model=UploadStubResponse)
+async def post_upload(files: list[UploadFile] = File(...)):
+    """При заданном datastore_url — проксирует файлы в datastore POST /upload. Иначе заглушка."""
+    count = len(files)
+    base = (_settings.datastore_url or "").rstrip("/")
+    if base:
+        upload_url = base + "/upload"
+        logger.info("[RAG] POST /upload proxy to datastore files_count=%s", count)
+        parts = []
+        for uf in files:
+            body = await uf.read()
+            name = uf.filename or "document.json"
+            parts.append(("files", (name, body, "application/json")))
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(upload_url, files=parts)
+        except httpx.RequestError as e:
+            logger.error("[RAG] POST /upload datastore request error: %s", e)
+            raise HTTPException(status_code=502, detail=f"Datastore unreachable: {e}") from e
+        if resp.status_code != 200:
+            detail = resp.text
+            try:
+                data = resp.json()
+                if "detail" in data:
+                    detail = data["detail"]
+            except Exception:
+                pass
+            logger.warning("[RAG] POST /upload datastore status=%s detail=%s", resp.status_code, detail)
+            raise HTTPException(status_code=resp.status_code, detail=detail)
+        data = resp.json()
+        uploaded = data.get("uploaded") or []
+        return UploadStubResponse(
+            message="Uploaded to datastore",
+            files_count=len(uploaded),
+        )
+    logger.info("[RAG] POST /upload stub files_count=%s", count)
+    return UploadStubResponse(message="Upload received (stub)", files_count=count)
 
 
 @router.post("/ingest", response_model=IngestResponse)
