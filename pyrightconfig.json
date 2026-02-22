@@ -1,0 +1,6 @@
+{
+  "extraPaths": [
+    "shared/db/src",
+    "shared/common/src",
+  ]
+}

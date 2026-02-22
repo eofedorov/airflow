@@ -1,19 +1,22 @@
-"""Чтение и нормализация документов из папки (формат loader)."""
+"""Чтение и нормализация документов из папки."""
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any
 
+log = logging.getLogger(__name__)
+
 
 def normalize_text(text: str) -> str:
-    """Нормализация текста: пробелы, переносы (как в loader)."""
+    """Нормализация текста: пробелы, переносы."""
     t = text.strip()
     t = re.sub(r"[ \t]+", " ", t)
     t = re.sub(r"\n{3,}", "\n\n", t)
     return t.strip()
 
 
-def _normalize_doc(d: dict[str, Any]) -> dict[str, Any]:
+def _normalize_doc(d: dict[str, Any]) -> dict[str, Any] | None:
     """Приводит один документ к формату loader (doc_id, title, path, document_type, created_at, content)."""
     doc_id = d.get("doc_id") or d.get("doc_key") or ""
     title = d.get("title") or ""
@@ -29,6 +32,29 @@ def _normalize_doc(d: dict[str, Any]) -> dict[str, Any]:
         "created_at": d.get("created_at") or "",
         "content": normalize_text(content),
     }
+
+
+def _parse_json_docs(data: Any) -> list[dict[str, Any]]:
+    """Извлечь и нормализовать документы из parsed JSON (list / {documents: [...]} / одиночный dict)."""
+    out: list[dict[str, Any]] = []
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict):
+                norm = _normalize_doc(item)
+                if norm is not None:
+                    out.append(norm)
+    elif isinstance(data, dict):
+        if "documents" in data:
+            for d in data["documents"]:
+                if isinstance(d, dict):
+                    norm = _normalize_doc(d)
+                    if norm is not None:
+                        out.append(norm)
+        else:
+            norm = _normalize_doc(data)
+            if norm is not None:
+                out.append(norm)
+    return out
 
 
 def read_documents_from_folder(
@@ -49,24 +75,9 @@ def read_documents_from_folder(
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
+            log.warning("Skipping invalid JSON file: %s", f.name)
             continue
-        if isinstance(data, list):
-            for item in data:
-                if isinstance(item, dict):
-                    norm = _normalize_doc(item)
-                    if norm is not None:
-                        out.append(norm)
-        elif isinstance(data, dict):
-            if "documents" in data:
-                for d in data["documents"]:
-                    if isinstance(d, dict):
-                        norm = _normalize_doc(d)
-                        if norm is not None:
-                            out.append(norm)
-            else:
-                norm = _normalize_doc(data)
-                if norm is not None:
-                    out.append(norm)
+        out.extend(_parse_json_docs(data))
 
     if doc_key is not None:
         out = [d for d in out if d.get("doc_id") == doc_key]

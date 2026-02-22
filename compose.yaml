@@ -57,8 +57,6 @@ services:
       dockerfile: apps/mcp_server/Dockerfile
     ports:
       - "8001:8001"
-    volumes:
-      - ./data:/app/data
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:8001/health || exit 1"]
       interval: 10s
@@ -77,7 +75,6 @@ services:
       QDRANT_URL: http://qdrant:6333
       QDRANT_COLLECTION: kb_chunks_v1
       RAG_EMBEDDING_MODEL: intfloat/multilingual-e5-small
-      KB_PATH: /app/data/docs
       DATASTORE_URL: http://datastore:8002
     networks:
       - llm_net
