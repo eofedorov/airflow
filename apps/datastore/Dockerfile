@@ -5,13 +5,11 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY shared/common ./shared/common
 COPY apps/datastore/src ./src
 COPY apps/datastore/requirements.txt ./
 COPY data/docs ./data/demo
 
-RUN pip install --no-cache-dir -e ./shared/common \
-    && pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 RUN mkdir -p /app/data/knowledge_base
 

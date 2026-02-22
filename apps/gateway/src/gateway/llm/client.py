@@ -2,13 +2,23 @@ import logging
 import os
 from typing import Any
 
-from openai import OpenAI
+from openai import APIStatusError, OpenAI
 from openai.types.chat import ChatCompletion
 
 from gateway.settings import Settings
 
 logger = logging.getLogger(__name__)
 _settings = Settings()
+
+
+def _log_api_error(e: APIStatusError, *, model: str, messages: list) -> None:
+    url = str(e.response.url) if e.response else _settings.llm_base_url
+    body = e.body if hasattr(e, "body") else None
+    roles = [m.get("role", "?") for m in messages[:5]]
+    logger.error(
+        "LLM API error: %s %s | url=%s model=%s roles=%s | response_body=%s",
+        e.status_code, type(e).__name__, url, model, roles, body,
+    )
 
 
 def _make_client() -> OpenAI:
@@ -47,6 +57,9 @@ def call_llm(
                 if content:
                     return content.strip()
             return ""
+        except APIStatusError as e:
+            _log_api_error(e, model=model, messages=messages)
+            raise
         except Exception as e:
             logger.error("call_llm attempt=%s failed: %s", attempt + 1, e)
             last_error = e
@@ -98,6 +111,9 @@ def call_llm_with_tools(
                 timeout=timeout,
             )
             return completion
+        except APIStatusError as e:
+            _log_api_error(e, model=model, messages=messages)
+            raise
         except Exception as e:
             logger.error("call_llm_with_tools attempt=%s failed: %s", attempt + 1, e)
             last_error = e

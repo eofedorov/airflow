@@ -45,12 +45,27 @@ def _load_from_disk() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for f in json_files:
         raw = f.read_text(encoding="utf-8")
-        data = json.loads(raw)
-        docs = data.get("documents") or []
-        for d in docs:
-            norm = _normalize_doc(d)
-            if norm:
-                out.append(norm)
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, dict):
+                    norm = _normalize_doc(item)
+                    if norm:
+                        out.append(norm)
+        elif isinstance(data, dict):
+            if "documents" in data:
+                for d in data["documents"]:
+                    if isinstance(d, dict):
+                        norm = _normalize_doc(d)
+                        if norm:
+                            out.append(norm)
+            else:
+                norm = _normalize_doc(data)
+                if norm:
+                    out.append(norm)
     return out
 
 
