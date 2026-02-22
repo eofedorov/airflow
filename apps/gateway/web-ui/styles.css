@@ -92,6 +92,25 @@ h2 {
   color: #666;
 }
 
+.result.loading::after {
+  content: "";
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+  border: 2px solid #e0e0e0;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: upload-spin 0.8s linear infinite;
+}
+
+@keyframes upload-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .result.error {
   color: #b91c1c;
 }

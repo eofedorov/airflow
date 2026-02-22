@@ -2,6 +2,12 @@
   const uploadForm = document.getElementById("upload-form");
   const uploadResult = document.getElementById("upload-result");
   const uploadBtn = document.getElementById("upload-btn");
+  const uploadDemoBtn = document.getElementById("upload-demo-btn");
+
+  function setUploadLoading(loading) {
+    uploadBtn.disabled = loading;
+    uploadDemoBtn.disabled = loading;
+  }
 
   uploadForm.addEventListener("submit", async function (e) {
     e.preventDefault();
@@ -12,7 +18,7 @@
       return;
     }
     setResult(uploadResult, "Загружаем…", false, true);
-    uploadBtn.disabled = true;
+    setUploadLoading(true);
     try {
       const formData = new FormData();
       for (let i = 0; i < files.length; i++) {
@@ -24,18 +30,48 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setResult(uploadResult, data.detail || `Ошибка ${res.status}`, true);
+        setResult(uploadResult, data.detail || "Ошибка " + res.status, true);
+        return;
+      }
+      if (data.error) {
+        setResult(
+          uploadResult,
+          "Загрузка выполнена, индексация не удалась: " + data.error,
+          true
+        );
+        return;
+      }
+      let msg = "Загружено файлов: " + data.files_count + ". " + (data.message || "");
+      if (data.ingest_docs_indexed != null) {
+        msg += " Проиндексировано документов: " + data.ingest_docs_indexed + ", чанков: " + (data.ingest_chunks_indexed ?? "—") + ".";
+      }
+      setResult(uploadResult, msg, false);
+    } catch (err) {
+      setResult(uploadResult, "Ошибка сети: " + err.message, true);
+    } finally {
+      setUploadLoading(false);
+    }
+  });
+
+  uploadDemoBtn.addEventListener("click", async function () {
+    setResult(uploadResult, "Индексируем демо…", false, true);
+    setUploadLoading(true);
+    try {
+      const res = await fetch("/rag/ingest", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResult(uploadResult, data.detail || "Ошибка " + res.status, true);
         return;
       }
       setResult(
         uploadResult,
-        `Загружено файлов: ${data.files_count}. ${data.message || ""}`,
+        "Демо проиндексировано. Документов: " + (data.docs_indexed ?? "—") + ", чанков: " + (data.chunks_indexed ?? "—") + ".",
         false
       );
     } catch (err) {
       setResult(uploadResult, "Ошибка сети: " + err.message, true);
     } finally {
-      uploadBtn.disabled = false;
+      setUploadLoading(false);
     }
   });
 

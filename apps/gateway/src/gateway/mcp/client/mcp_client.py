@@ -1,4 +1,4 @@
-"""Синхронный MCP-клиент: подключение к Streamable HTTP, list_tools, call_tool."""
+"""MCP-клиент: подключение к Streamable HTTP, list_tools, call_tool (sync), call_tool_async (async)."""
 import asyncio
 import json
 import logging
@@ -87,12 +87,13 @@ def list_tools(mcp_url: str | None = None) -> list[dict[str, Any]]:
     return openai_tools
 
 
-def call_tool(
+async def _call_tool_impl(
     name: str,
     arguments: dict[str, Any],
     mcp_url: str | None = None,
     run_id: str | None = None,
 ) -> dict[str, Any]:
+    """Внутренняя async-реализация вызова MCP-инструмента. Не вызывать из кода с уже запущенным event loop через asyncio.run()."""
     url = Settings().mcp_server_url if mcp_url is None else mcp_url
     if not url:
         raise RuntimeError("mcp_server_url not set")
@@ -104,7 +105,7 @@ def call_tool(
     _timeout = float(Settings().mcp_timeout)
     _client = httpx.AsyncClient(timeout=_timeout)
 
-    async def _call():
+    try:
         async with streamable_http_client(url, http_client=_client) as (read_stream, write_stream, _):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
@@ -128,9 +129,6 @@ def call_tool(
                         logger.error("MCP tool response JSON decode error: %s", e)
                         return {"result": text}
                 return {}
-
-    try:
-        return _run_async(_call())
     except (httpx.ConnectError, BaseExceptionGroup) as e:
         logger.error(
             "MCP connection failed (call_tool) url=%s name=%s: %s",
@@ -140,3 +138,23 @@ def call_tool(
         )
         _raise_if_connection_error(url, e)
         raise
+
+
+async def call_tool_async(
+    name: str,
+    arguments: dict[str, Any],
+    mcp_url: str | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Асинхронный вызов MCP-инструмента. Использовать в async-обработчиках (FastAPI, etc.)."""
+    return await _call_tool_impl(name, arguments, mcp_url, run_id)
+
+
+def call_tool(
+    name: str,
+    arguments: dict[str, Any],
+    mcp_url: str | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Синхронная обёртка: создаёт event loop и запускает call. Только для вызова из синхронного кода (не из async def)."""
+    return _run_async(_call_tool_impl(name, arguments, mcp_url, run_id))
