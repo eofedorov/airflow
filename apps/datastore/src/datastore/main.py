@@ -10,7 +10,7 @@ from datastore.docs import read_documents_from_folder
 from datastore.schemas import DocumentIn
 from datastore.settings import Settings
 
-logging.getLogger("datastore").setLevel(logging.INFO)
+log = logging.getLogger(__name__)
 
 app = FastAPI(title="Datastore", description="Хранилище документов для RAG (upload/read/delete)")
 
@@ -80,7 +80,9 @@ def upload(files: list[UploadFile] = File(...)):
         )
         saved.append(doc.doc_key)
     if errors:
+        log.warning("upload validation failed: %s", "; ".join(errors))
         raise HTTPException(status_code=400, detail="; ".join(errors))
+    log.info("uploaded %d documents: %s", len(saved), saved)
     return {"uploaded": saved}
 
 
@@ -98,12 +100,13 @@ def delete(
         path = kb / f"{doc_key}.json"
         if path.exists():
             path.unlink()
+            log.info("deleted document: %s", doc_key)
             return {"deleted": [doc_key]}
         return {"deleted": []}
     deleted: list[str] = []
-    for f in kb.glob("*.json"):
-        deleted.append(f.stem)
-        f.unlink()
+    # for f in kb.glob("*.json"):
+        # deleted.append(f.stem)
+        # f.unlink()
     return {"deleted": deleted}
 
 
@@ -112,3 +115,5 @@ def delete(
 def health():
     """Healthcheck для compose."""
     return {"status": "ok"}
+
+

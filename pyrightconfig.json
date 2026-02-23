@@ -2,5 +2,8 @@
   "extraPaths": [
     "shared/db/src",
     "shared/common/src",
+    "apps/datastore/src",
+    "apps/mcp_server/src",
+    "apps/gateway/src"
   ]
 }

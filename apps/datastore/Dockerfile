@@ -16,4 +16,4 @@ RUN mkdir -p /app/data/knowledge_base
 ENV PYTHONPATH=/app/src
 ENV DATA_PATH=/app/data
 EXPOSE 8002
-CMD ["uvicorn", "datastore.main:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["uvicorn", "datastore.main:app", "--host", "0.0.0.0", "--port", "8002", "--no-access-log"]

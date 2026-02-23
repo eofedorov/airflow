@@ -33,4 +33,4 @@ ENV PYTHONPATH=/app/src
 # Use pre-downloaded model only; no Hugging Face network calls at runtime.
 ENV HF_HUB_OFFLINE=1
 EXPOSE 8001
-CMD ["python", "-m", "mcp_server.main"]
+CMD ["uvicorn", "mcp_server.main:app", "--host", "0.0.0.0", "--port", "8001", "--no-access-log"]
