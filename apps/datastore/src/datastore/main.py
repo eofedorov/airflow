@@ -10,7 +10,6 @@ from datastore.docs import read_documents_from_folder
 from datastore.schemas import DocumentIn
 from datastore.settings import Settings
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 logging.getLogger("datastore").setLevel(logging.INFO)
 
 app = FastAPI(title="Datastore", description="Хранилище документов для RAG (upload/read/delete)")

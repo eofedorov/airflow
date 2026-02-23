@@ -13,6 +13,7 @@ from db.queries import (
     insert_document,
     update_document_sha256,
 )
+from mcp_server.rag.embedding import get_embedding_model
 from mcp_server.rag.ingest.chunker import chunk_document
 from mcp_server.rag.ingest.loader import load_documents
 from mcp_server.rag.store.qdrant_store import QdrantStore
@@ -24,11 +25,6 @@ log = logging.getLogger(__name__)
 
 def _sha256_content(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
-
-
-def _get_embedding_model():
-    from sentence_transformers import SentenceTransformer
-    return SentenceTransformer(_settings.rag_embedding_model)
 
 
 def _index_one_document(
@@ -48,7 +44,7 @@ def _index_one_document(
     if existing is not None:
         doc_id, existing_sha = existing
         if existing_sha == new_sha:
-            log.debug("[INGESTION] skip doc: unchanged sha doc_key=%s", doc_key[:50])
+            log.info("[INGESTION] skip doc: unchanged sha doc_key=%s", doc_key[:50])
             return (0, 0)
         update_document_sha256(conn, doc_id, new_sha)
         delete_chunks_by_doc_id(conn, doc_id)
@@ -110,7 +106,7 @@ def run_ingestion(
     log.info("[INGESTION] loaded docs=%d chunk_size=%d overlap=%d", len(docs), cs, ov)
     store = QdrantStore()
     store.ensure_collection()
-    model = _get_embedding_model()
+    model = get_embedding_model()
     docs_indexed = 0
     chunks_indexed = 0
     pool = get_pool()
