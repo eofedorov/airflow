@@ -47,7 +47,10 @@ coverage.xml
 *.swo
 *~
 .cursor/
-DESCRIPTION.md
+
+# ——— Docker volumes (Postgres, Qdrant) ———
+data/postgres
+data/qdrant
 
 # ——— ОС ———
 .DS_Store

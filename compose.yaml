@@ -4,7 +4,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
       - ./infra/postgres:/docker-entrypoint-initdb.d
     environment:
       POSTGRES_USER: postgres
@@ -24,7 +24,7 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - qdrant_data:/qdrant/storage
+      - ./data/qdrant:/qdrant/storage
     healthcheck:
       test: ["CMD-SHELL", "bash -c \"exec 3<>/dev/tcp/127.0.0.1/6333 && echo -e 'GET /healthz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200' <&3 || exit 1\""]
       interval: 10s
@@ -80,8 +80,6 @@ services:
       - llm_net
 
 volumes:
-  pgdata:
-  qdrant_data:
   datastore_kb:
 
 networks:
