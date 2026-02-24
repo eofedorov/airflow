@@ -13,6 +13,7 @@ from gateway.mcp.client.mcp_client import MCPConnectionError, MCPToolError
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 logging.getLogger("gateway").setLevel(logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("mcp.client.streamable_http").setLevel(logging.WARNING)
 
 app = FastAPI(title="LLM-Gate", description="AI-шлюз для инженерных задач")
 app.include_router(router, prefix="", tags=["run"])

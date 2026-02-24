@@ -60,10 +60,10 @@ def _registry() -> dict[str, PromptSpec]:
             system_rules="Respond with valid JSON only, following the given schema. No text before or after the JSON.",
             output_schema=AnswerContract,
         ),
-        "rag_ask_strict_v1": PromptSpec(
-            name="rag_ask_strict",
-            version="v1",
-            template_filename="rag_ask_strict_v1.txt",
+        "rag_ask_v2": PromptSpec(
+            name="rag_ask",
+            version="v2",
+            template_filename="rag_ask_v2.txt",
             system_rules="Respond with valid JSON only, following the given schema. No text before or after the JSON.",
             output_schema=AnswerContract,
         ),

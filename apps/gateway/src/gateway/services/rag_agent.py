@@ -7,9 +7,10 @@ from uuid import UUID
 
 from common.contracts.rag_schemas import AnswerContract
 from gateway.llm import client as llm_client
-from gateway.prompts.render import get_schema_description
 from gateway.mcp.client.mcp_client import call_tool as mcp_call_tool
 from gateway.mcp.client.mcp_client import list_tools as mcp_list_tools
+from gateway.prompts.system_prompts import INSUFFICIENT_ANSWER, RAG_AGENT_SYSTEM_PROMPT
+from gateway.services.llm_json import parse_llm_response_or_repair
 
 MAX_TOOL_CALLS_PER_REQUEST = 6
 
@@ -20,43 +21,6 @@ def _format_tool_error(exc: BaseException) -> str:
     if isinstance(exc, BaseExceptionGroup) and exc.exceptions:
         return _format_tool_error(exc.exceptions[0])
     return str(exc)
-
-
-SYSTEM_PROMPT = """Ты отвечаешь на вопросы по базе знаний. Обязательно используй инструменты kb_search и kb_get_chunk для поиска и получения текста чанков.
-Если по результатам поиска данных недостаточно для ответа — верни status "insufficient_context".
-Финальный ответ выводи строго в виде одного JSON-объекта со схемой: {"answer": "...", "confidence": 0.0-1.0, "sources": [{"chunk_id": "...", "doc_title": "...", "quote": "...", "relevance": 0.0-1.0}], "status": "ok" | "insufficient_context"}.
-Не добавляй текст до или после JSON."""
-
-INSUFFICIENT_ANSWER = "In the knowledge base there is no answer to this question."
-
-REPAIR_SYSTEM = "Преобразуй ответ в валидный JSON по указанной схеме. Выведи только JSON, без пояснений до или после."
-
-
-def _extract_json_from_text(text: str) -> str:
-    text = text.strip()
-    start = text.find("{")
-    if start == -1:
-        return text
-    end = text.rfind("}")
-    if end == -1 or end < start:
-        return text
-    return text[start : end + 1]
-
-
-def _parse_answer(content: str | None) -> AnswerContract | None:
-    if not content or not content.strip():
-        return None
-    raw = _extract_json_from_text(content)
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        logger.error("_parse_answer JSON decode error: %s", e)
-        return None
-    try:
-        return AnswerContract.model_validate(data)
-    except Exception as e:
-        logger.error("_parse_answer validation error: %s", e)
-        return None
 
 
 def ask(
@@ -79,7 +43,7 @@ def ask(
         )
 
     messages: list[dict] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": RAG_AGENT_SYSTEM_PROMPT},
         {"role": "user", "content": question.strip()},
     ]
     total_tool_calls = 0
@@ -94,22 +58,13 @@ def ask(
         tool_calls = getattr(msg, "tool_calls", None) if msg else []
 
         if not tool_calls and content:
-            parsed = _parse_answer(content)
+            parsed, _ = parse_llm_response_or_repair(
+                content or "", AnswerContract, llm_client.call_llm
+            )
             if parsed is not None:
                 logger.info("[AGENT] done status=%s", parsed.status)
                 return parsed
-            output_contract = get_schema_description(AnswerContract)
-            repair_messages = [
-                {"role": "system", "content": REPAIR_SYSTEM + "\n\nСхема:\n" + output_contract[:1500]},
-                {"role": "user", "content": "Исправь в валидный JSON:\n" + (content or "")[:4000]},
-            ]
-            logger.info("[AGENT] parse failed -> repair pass")
-            raw_repair = llm_client.call_llm(repair_messages)
-            parsed = _parse_answer(raw_repair)
-            if parsed is not None:
-                logger.info("[AGENT] done after repair status=%s", parsed.status)
-                return parsed
-            logger.info("[AGENT] repair failed -> insufficient_context")
+            logger.info("[AGENT] parse/repair failed -> insufficient_context")
             return AnswerContract(
                 answer=INSUFFICIENT_ANSWER,
                 confidence=0.0,
@@ -143,7 +98,7 @@ def ask(
                 args = {}
             try:
                 logger.info("[AGENT] tool_call name=%s args=%s", name, list(args.keys()) if args else [])
-                result = mcp_call_tool(name, args, mcp_url=mcp_url, run_id=run_id)
+                result = mcp_call_tool(name, args, mcp_url=mcp_url, run_id=run_id)  # pyright: ignore[reportArgumentType]
                 result_str = json.dumps(result, ensure_ascii=False)
             except (Exception, BaseExceptionGroup) as e:
                 msg = _format_tool_error(e)
